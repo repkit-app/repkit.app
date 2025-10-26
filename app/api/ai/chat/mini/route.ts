@@ -41,32 +41,47 @@ export async function POST(request: NextRequest) {
     const ip = ipCandidate || realIp || cfIp || "0.0.0.0";
     const identifier = deviceToken ?? ip;
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(identifier, !!deviceToken);
+    // Check rate limits (require BOTH token and IP to be within limits)
+    // This prevents bypassing limits by rotating X-Device-Token
+    const tokenRate = deviceToken ? checkRateLimit(deviceToken, true) : null;
+    const ipRate = checkRateLimit(ip, false);
+    const violated = tokenRate && !tokenRate.allowed ? tokenRate : !ipRate.allowed ? ipRate : null;
+    const effective = tokenRate ?? ipRate;
 
-    if (!rateLimit.allowed) {
+    if (violated) {
       console.warn("[Rate Limit] Exceeded:", {
         identifier: deviceToken
           ? `token#${anonymize(deviceToken)}`
           : `ip#${anonymize(ip)}`,
-        limit: rateLimit.limit,
+        limit: violated.limit,
       });
-
+      const retryAfter = Math.max(
+        0,
+        Math.ceil((violated.resetAt - Date.now()) / 1000)
+      ).toString();
       return NextResponse.json(
         {
           error: "Rate limit exceeded",
-          message: `You have exceeded the rate limit of ${rateLimit.limit} requests per hour. Please try again later.`,
-          resetAt: new Date(rateLimit.resetAt).toISOString(),
+          message: `You have exceeded the rate limit of ${violated.limit} requests per hour. Please try again later.`,
+          resetAt: new Date(violated.resetAt).toISOString(),
         },
         {
           status: 429,
-          headers: getRateLimitHeaders(rateLimit),
+          headers: { ...getRateLimitHeaders(violated), "Retry-After": retryAfter },
         }
       );
     }
 
     // Parse and validate request body
-    const body: ChatCompletionRequest = await request.json();
+    let body: ChatCompletionRequest;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400 }
+      );
+    }
 
     if (!body.messages || !Array.isArray(body.messages)) {
       return NextResponse.json(
@@ -113,7 +128,7 @@ export async function POST(request: NextRequest) {
 
     // Return completion with rate limit headers
     return NextResponse.json(completion, {
-      headers: getRateLimitHeaders(rateLimit),
+      headers: getRateLimitHeaders(effective),
     });
   } catch (error: unknown) {
     const duration = Date.now() - startTime;
