@@ -25,16 +25,20 @@ const RATE_LIMITS = {
 };
 
 /**
- * Clean up expired entries periodically
+ * Lazy cleanup: Remove expired entries on-demand
+ * Runs at most once every 5 minutes to avoid overhead
  */
-setInterval(() => {
-  const now = Date.now();
+let lastCleanupAt = 0;
+function cleanupExpired(now: number) {
+  // At most once every 5 minutes
+  if (now - lastCleanupAt < 5 * 60 * 1000) return;
+  lastCleanupAt = now;
   for (const [key, entry] of rateLimitStore.entries()) {
     if (now > entry.resetAt) {
       rateLimitStore.delete(key);
     }
   }
-}, 5 * 60 * 1000); // Clean up every 5 minutes
+}
 
 /**
  * Check if a request is allowed under rate limits
@@ -50,6 +54,8 @@ export function checkRateLimit(identifier: string, hasDeviceToken: boolean): {
   resetAt: number;
 } {
   const now = Date.now();
+  cleanupExpired(now); // Lazy cleanup on each check
+
   const limit = hasDeviceToken
     ? RATE_LIMITS.WITH_TOKEN
     : RATE_LIMITS.WITHOUT_TOKEN;

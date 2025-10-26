@@ -53,22 +53,29 @@ export async function createChatCompletion(
 }
 
 /**
+ * Official OpenAI pricing (per 1M tokens)
+ * Updated: October 2025
+ * Source: https://openai.com/api/pricing/
+ */
+export const PRICING_USD_PER_MTOK = {
+  "gpt-4o-mini": { input: 0.60, output: 2.40 },
+  "gpt-4o": { input: 5.00, output: 20.0 },
+} as const;
+
+type SupportedModel = keyof typeof PRICING_USD_PER_MTOK;
+
+/**
  * Calculate approximate cost for OpenAI API usage
- * Prices as of 2025 (per 1M tokens):
- * - gpt-4o-mini: $0.15 input, $0.60 output
- * - gpt-4o: $2.50 input, $10.00 output
+ * Prices as of October 2025 (per 1M tokens):
+ * - gpt-4o-mini: $0.60 input, $2.40 output
+ * - gpt-4o: $5.00 input, $20.00 output
  */
 export function calculateCost(
-  model: "gpt-4o-mini" | "gpt-4o",
+  model: SupportedModel,
   promptTokens: number,
   completionTokens: number
 ): number {
-  const prices = {
-    "gpt-4o-mini": { input: 0.15, output: 0.6 },
-    "gpt-4o": { input: 2.5, output: 10.0 },
-  };
-
-  const price = prices[model];
+  const price = PRICING_USD_PER_MTOK[model];
   const inputCost = (promptTokens / 1_000_000) * price.input;
   const outputCost = (completionTokens / 1_000_000) * price.output;
 

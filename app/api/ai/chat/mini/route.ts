@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import {
   createChatCompletion,
   calculateCost,
   type ChatCompletionRequest,
 } from "@/lib/openai";
 import { checkRateLimit, getRateLimitHeaders } from "@/lib/rate-limit";
+
+/**
+ * Anonymize PII for logging by hashing
+ */
+function anonymize(value: string): string {
+  return value
+    ? createHash("sha256").update(value).digest("hex").slice(0, 12)
+    : "unknown";
+}
 
 /**
  * OpenAI API Proxy - Mini Model (gpt-4o-mini)
@@ -22,19 +32,23 @@ export async function POST(request: NextRequest) {
 
   try {
     // Extract identifier for rate limiting
-    const deviceToken = request.headers.get("X-Device-Token");
-    const ip =
-      request.headers.get("x-forwarded-for") ||
-      request.headers.get("x-real-ip") ||
-      "unknown";
-    const identifier = deviceToken || ip;
+    const deviceToken =
+      request.headers.get("x-device-token")?.trim() || undefined;
+    const xff = request.headers.get("x-forwarded-for") || "";
+    const ipCandidate = xff.split(",")[0]?.trim();
+    const realIp = request.headers.get("x-real-ip")?.trim();
+    const cfIp = request.headers.get("cf-connecting-ip")?.trim();
+    const ip = ipCandidate || realIp || cfIp || "0.0.0.0";
+    const identifier = deviceToken ?? ip;
 
     // Check rate limit
     const rateLimit = checkRateLimit(identifier, !!deviceToken);
 
     if (!rateLimit.allowed) {
       console.warn("[Rate Limit] Exceeded:", {
-        identifier: deviceToken ? `token:${deviceToken.slice(0, 8)}...` : `ip:${ip}`,
+        identifier: deviceToken
+          ? `token#${anonymize(deviceToken)}`
+          : `ip#${anonymize(ip)}`,
         limit: rateLimit.limit,
       });
 
@@ -85,7 +99,9 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
     console.log("[API Request]", {
       model: "gpt-4o-mini",
-      identifier: deviceToken ? `token:${deviceToken.slice(0, 8)}...` : `ip:${ip}`,
+      identifier: deviceToken
+        ? `token#${anonymize(deviceToken)}`
+        : `ip#${anonymize(ip)}`,
       userAgent: request.headers.get("user-agent") || "unknown",
       messages: body.messages.length,
       promptTokens: usage?.prompt_tokens || 0,
