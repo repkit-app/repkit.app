@@ -107,3 +107,47 @@ export function getRateLimitHeaders(rateLimit: {
     "X-RateLimit-Reset": new Date(rateLimit.resetAt).toISOString(),
   };
 }
+
+/**
+ * Get combined rate limit headers for both token and IP buckets
+ * Exposes both limits so clients can react to either bucket nearing exhaustion
+ */
+export function getRateLimitHeadersCombined(
+  token:
+    | { limit: number; remaining: number; resetAt: number }
+    | null
+    | undefined,
+  ip: { limit: number; remaining: number; resetAt: number }
+): Record<string, string> {
+  const h: Record<string, string> = {};
+
+  // Individual bucket headers
+  if (token) {
+    h["X-RateLimit-Limit-Token"] = String(token.limit);
+    h["X-RateLimit-Remaining-Token"] = String(token.remaining);
+    h["X-RateLimit-Reset-Token"] = new Date(token.resetAt).toISOString();
+  }
+  if (ip) {
+    h["X-RateLimit-Limit-IP"] = String(ip.limit);
+    h["X-RateLimit-Remaining-IP"] = String(ip.remaining);
+    h["X-RateLimit-Reset-IP"] = new Date(ip.resetAt).toISOString();
+  }
+
+  // Combined view (most restrictive limits)
+  const limits = [token, ip].filter(Boolean) as Array<{
+    remaining: number;
+    resetAt: number;
+    limit: number;
+  }>;
+  if (limits.length) {
+    h["X-RateLimit-Limit"] = String(Math.max(...limits.map((x) => x.limit)));
+    h["X-RateLimit-Remaining"] = String(
+      Math.min(...limits.map((x) => x.remaining))
+    );
+    h["X-RateLimit-Reset"] = new Date(
+      Math.min(...limits.map((x) => x.resetAt))
+    ).toISOString();
+  }
+
+  return h;
+}

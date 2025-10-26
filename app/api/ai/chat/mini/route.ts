@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
+import { createHmac } from "crypto";
 import {
   createChatCompletion,
   calculateCost,
   type ChatCompletionRequest,
 } from "@/lib/openai";
-import { checkRateLimit, getRateLimitHeaders } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+  getRateLimitHeadersCombined,
+} from "@/lib/rate-limit";
 
 /**
- * Anonymize PII for logging by hashing
+ * Anonymize PII for logging using HMAC
+ * Prevents offline reversal of hashed IPs/tokens from leaked logs
  */
 function anonymize(value: string): string {
+  const key = process.env.LOG_HASH_KEY || "change-me-in-prod";
   return value
-    ? createHash("sha256").update(value).digest("hex").slice(0, 12)
+    ? createHmac("sha256", key).update(value).digest("hex").slice(0, 12)
     : "unknown";
 }
 
@@ -29,17 +35,18 @@ function anonymize(value: string): string {
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
+  const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
   try {
-    // Extract identifier for rate limiting
+    // Extract device token and client IP for rate limiting
     const deviceToken =
       request.headers.get("x-device-token")?.trim() || undefined;
-    const xff = request.headers.get("x-forwarded-for") || "";
-    const ipCandidate = xff.split(",")[0]?.trim();
-    const realIp = request.headers.get("x-real-ip")?.trim();
+    // Prefer cf-connecting-ip (Cloudflare edge), then x-real-ip, then first x-forwarded-for hop
     const cfIp = request.headers.get("cf-connecting-ip")?.trim();
-    const ip = ipCandidate || realIp || cfIp || "0.0.0.0";
-    const identifier = deviceToken ?? ip;
+    const realIp = request.headers.get("x-real-ip")?.trim();
+    const xff = request.headers.get("x-forwarded-for") || "";
+    const xffFirst = xff.split(",")[0]?.trim();
+    const ip = cfIp || realIp || xffFirst || "0.0.0.0";
 
     // Check rate limits (require BOTH token and IP to be within limits)
     // This prevents bypassing limits by rotating X-Device-Token
@@ -113,6 +120,7 @@ export async function POST(request: NextRequest) {
     // Log request details
     const duration = Date.now() - startTime;
     console.log("[API Request]", {
+      requestId,
       model: "gpt-4o-mini",
       identifier: deviceToken
         ? `token#${anonymize(deviceToken)}`
@@ -126,9 +134,12 @@ export async function POST(request: NextRequest) {
       duration: `${duration}ms`,
     });
 
-    // Return completion with rate limit headers
+    // Return completion with rate limit headers and request ID
     return NextResponse.json(completion, {
-      headers: getRateLimitHeaders(effective),
+      headers: {
+        "X-Request-Id": requestId,
+        ...getRateLimitHeadersCombined(tokenRate ?? undefined, ipRate),
+      },
     });
   } catch (error: unknown) {
     const duration = Date.now() - startTime;
@@ -141,6 +152,7 @@ export async function POST(request: NextRequest) {
 
     // Log error details
     console.error("[API Error]", {
+      requestId,
       model: "gpt-4o-mini",
       error: errorMessage,
       type: errorType,
