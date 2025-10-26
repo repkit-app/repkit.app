@@ -1,0 +1,122 @@
+# CodeRabbit Configuration for repkit.app
+
+# Language & Framework
+language: typescript
+framework: nextjs
+
+# Review Settings
+reviews:
+  # Enable auto-reviews on pull requests
+  auto_review: true
+
+  # Review profile (can be: chill, normal, or assertive)
+  profile: normal
+
+  # Request changes for critical issues
+  request_changes_workflow: true
+
+  # Automatically resolve conversations when fixed
+  auto_resolve: true
+
+  # Review focus areas
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  # Specific review areas for Next.js/TypeScript
+  focus_areas:
+    - name: "TypeScript Best Practices"
+      instructions: |
+        - Check for proper type safety (avoid 'any' types)
+        - Ensure interfaces/types are properly defined
+        - Verify generic types are used correctly
+        - Check for proper async/await usage
+
+    - name: "Next.js App Router Patterns"
+      instructions: |
+        - Verify Server vs Client Components are used appropriately
+        - Check for proper use of 'use client' directive
+        - Ensure metadata is properly configured
+        - Verify dynamic routes follow Next.js conventions
+
+    - name: "React Best Practices"
+      instructions: |
+        - Check for proper hook usage (rules of hooks)
+        - Verify state management is appropriate
+        - Look for unnecessary re-renders
+        - Check for proper error boundaries
+
+    - name: "API Route Security"
+      instructions: |
+        - Verify API routes have proper error handling
+        - Check for input validation
+        - Ensure sensitive data is not exposed
+        - Verify rate limiting considerations
+
+    - name: "Performance"
+      instructions: |
+        - Check for lazy loading opportunities
+        - Verify images use Next.js Image component
+        - Look for unnecessary client-side bundles
+        - Check for proper code splitting
+
+    - name: "Accessibility"
+      instructions: |
+        - Verify semantic HTML usage
+        - Check for ARIA labels where needed
+        - Ensure keyboard navigation works
+        - Verify color contrast for text
+
+# Path-based instructions
+path_instructions:
+  - path: "app/api/**"
+    instructions: |
+      Review API routes for:
+      - Proper HTTP method handling (GET, POST, etc.)
+      - Input validation and sanitization
+      - Error handling with appropriate status codes
+      - Type safety for request/response bodies
+      - Rate limiting considerations
+      - Security best practices (no exposed secrets)
+
+  - path: "app/**/page.tsx"
+    instructions: |
+      Review pages for:
+      - Proper use of Server Components (default)
+      - Metadata export for SEO
+      - Loading states and error boundaries
+      - Accessibility (semantic HTML, ARIA labels)
+
+  - path: "components/**"
+    instructions: |
+      Review components for:
+      - Reusability and composability
+      - Proper prop typing with TypeScript
+      - Client vs Server component appropriateness
+      - Accessibility features
+
+# File patterns to ignore
+ignore:
+  - "node_modules/**"
+  - ".next/**"
+  - "out/**"
+  - "build/**"
+  - "dist/**"
+  - "*.config.js"
+  - "*.config.ts"
+  - "package-lock.json"
+  - "pnpm-lock.yaml"
+  - "yarn.lock"
+
+# Chat settings
+chat:
+  auto_reply: true
+
+# Knowledge base (context for CodeRabbit)
+knowledge_base:
+  - "This is a Next.js 15 marketing website and API proxy for RepKit fitness app"
+  - "We use the App Router (not Pages Router)"
+  - "TypeScript strict mode is enabled"
+  - "Tailwind CSS is used for styling"
+  - "API routes proxy requests to OpenAI Chat Completions API"
