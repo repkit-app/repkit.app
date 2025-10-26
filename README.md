@@ -70,13 +70,60 @@ npm run lint
 
 OpenAI proxy using `gpt-4o-mini` model (cost-effective for simple queries).
 
-**Status**: Stub - Implementation in issue #2
+**Request:**
+```json
+{
+  "messages": [
+    {"role": "system", "content": "You are a fitness coach."},
+    {"role": "user", "content": "Generate a 3-day workout plan"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 2000
+}
+```
+
+**Headers:**
+- `Content-Type: application/json`
+- `X-Device-Token: <optional-device-id>` (for higher rate limits)
+
+**Response:**
+```json
+{
+  "id": "chatcmpl-xyz",
+  "model": "gpt-4o-mini",
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "..."
+    }
+  }],
+  "usage": {
+    "prompt_tokens": 50,
+    "completion_tokens": 300,
+    "total_tokens": 350
+  }
+}
+```
+
+**Rate Limits:**
+- 100 requests/hour with `X-Device-Token`
+- 50 requests/hour without token (fallback to IP)
+
+**Status**: ✅ **Implemented**
+
+---
 
 ### `/api/ai/chat/standard` (POST)
 
 OpenAI proxy using `gpt-4o` model (more capable for complex queries).
 
-**Status**: Stub - Implementation in issue #2
+Same request/response format as `/mini` endpoint.
+
+**Rate Limits:**
+- 100 requests/hour with `X-Device-Token`
+- 50 requests/hour without token (fallback to IP)
+
+**Status**: ✅ **Implemented**
 
 ## Deployment
 
