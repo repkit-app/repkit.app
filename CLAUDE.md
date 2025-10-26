@@ -145,7 +145,7 @@ Before coding any user-facing feature, verify:
 
 ```bash
 # Get all inline code review comments from CodeRabbit
-gh api repos/repkit-app/repkit.app/pulls/{PR_NUM}/comments \
+gh api repos/rustpoint/repkit.app/pulls/{PR_NUM}/comments \
   --jq '.[] | select(.user.login == "coderabbitai[bot]") | {
     id: .id,
     path: .path,
@@ -161,7 +161,7 @@ For **each CodeRabbit comment**, reply using this exact format:
 
 ```bash
 # Reply to inline code review comment (creates threaded reply)
-gh api repos/repkit-app/repkit.app/pulls/{PR_NUM}/comments \
+gh api repos/rustpoint/repkit.app/pulls/{PR_NUM}/comments \
   -X POST \
   -f body="✅ **Fixed in commit abc1234**
 

@@ -333,10 +333,10 @@ echo ""
 
 # Step 3: Check for unresolved CodeRabbit comments
 echo "🤖 Checking CodeRabbit feedback..."
-UNRESOLVED_COMMENTS=$(gh api "repos/repkit-app/repkit/pulls/$PR_NUM/comments" \
+UNRESOLVED_COMMENTS=$(gh api "repos/rustpoint/repkit/pulls/$PR_NUM/comments" \
     --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | length' 2>/dev/null || echo "0")
 
-UNRESOLVED_REVIEWS=$(gh api "repos/repkit-app/repkit/pulls/$PR_NUM/reviews" \
+UNRESOLVED_REVIEWS=$(gh api "repos/rustpoint/repkit/pulls/$PR_NUM/reviews" \
     --jq '[.[] | select(.user.login == "coderabbitai[bot]" and .state == "COMMENTED")] | length' 2>/dev/null || echo "0")
 
 TOTAL_UNRESOLVED=$((UNRESOLVED_COMMENTS + UNRESOLVED_REVIEWS))
@@ -349,7 +349,7 @@ if [ "$TOTAL_UNRESOLVED" -gt 0 ]; then
     echo "  2. Reply to each comment inline on GitHub"
     echo "  3. Mark conversations as 'Resolved' after addressing"
     echo ""
-    echo "View PR comments: https://github.com/repkit-app/repkit/pull/$PR_NUM/files"
+    echo "View PR comments: https://github.com/rustpoint/repkit/pull/$PR_NUM/files"
     exit 1
 fi
 
@@ -378,7 +378,7 @@ else
             echo "  - $check"
         done
         echo ""
-        echo "View CI status: https://github.com/repkit-app/repkit/pull/$PR_NUM/checks"
+        echo "View CI status: https://github.com/rustpoint/repkit/pull/$PR_NUM/checks"
         exit 1
     fi
 
@@ -391,7 +391,7 @@ else
         done
         echo ""
         echo "Wait for all checks to complete before merging"
-        echo "View CI status: https://github.com/repkit-app/repkit/pull/$PR_NUM/checks"
+        echo "View CI status: https://github.com/rustpoint/repkit/pull/$PR_NUM/checks"
         exit 1
     fi
 

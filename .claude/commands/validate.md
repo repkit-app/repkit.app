@@ -153,7 +153,7 @@ for fix in "${FIXES_NEEDED[@]}"; do
     case $ACTION in
         add_to_project)
             echo "  → Adding issue #$ISSUE to project board..."
-            gh project item-add $PROJECT_NUMBER --owner $OWNER --url "https://github.com/repkit-app/repkit/issues/$ISSUE"
+            gh project item-add $PROJECT_NUMBER --owner $OWNER --url "https://github.com/rustpoint/repkit/issues/$ISSUE"
 
             # Get the item ID and set status
             sleep 1
