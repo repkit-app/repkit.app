@@ -48,6 +48,71 @@ export async function POST(request: NextRequest) {
     const xffFirst = xff.split(",")[0]?.trim();
     const ip = cfIp || realIp || xffFirst || "0.0.0.0";
 
+    // Parse and validate request body (needed for HMAC signature validation)
+    let body: ChatCompletionRequest;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400 }
+      );
+    }
+
+    // HMAC Authentication: Validate request signature
+    const signature = request.headers.get("x-request-signature")?.trim();
+    const timestamp = request.headers.get("x-request-timestamp")?.trim();
+
+    if (!signature || !timestamp) {
+      return NextResponse.json(
+        { error: "Missing authentication headers" },
+        { status: 401 }
+      );
+    }
+
+    // Validate timestamp (5 minute window to prevent replay attacks)
+    const requestTime = parseInt(timestamp);
+    const now = Date.now();
+    const age = now - requestTime * 1000;
+
+    if (isNaN(requestTime) || age < 0 || age > 5 * 60 * 1000) {
+      return NextResponse.json(
+        { error: "Request timestamp invalid or expired" },
+        { status: 401 }
+      );
+    }
+
+    // Validate HMAC signature
+    const secret = process.env.HMAC_SECRET;
+
+    if (!secret) {
+      console.error("[Auth] HMAC_SECRET not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    const bodyText = JSON.stringify(body);
+    const payload = bodyText + timestamp;
+    const expectedSignature = createHmac("sha256", secret)
+      .update(payload)
+      .digest("hex");
+
+    if (signature !== expectedSignature) {
+      console.warn("[Auth] Invalid signature:", {
+        requestId,
+        identifier: deviceToken
+          ? `token#${anonymize(deviceToken)}`
+          : `ip#${anonymize(ip)}`,
+      });
+
+      return NextResponse.json(
+        { error: "Invalid request signature" },
+        { status: 401 }
+      );
+    }
+
     // Check rate limits (require BOTH token and IP to be within limits)
     // This prevents bypassing limits by rotating X-Device-Token
     const tokenRate = deviceToken ? checkRateLimit(deviceToken, true) : null;
@@ -76,17 +141,6 @@ export async function POST(request: NextRequest) {
           status: 429,
           headers: { ...getRateLimitHeaders(violated), "Retry-After": retryAfter },
         }
-      );
-    }
-
-    // Parse and validate request body
-    let body: ChatCompletionRequest;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON body" },
-        { status: 400 }
       );
     }
 
