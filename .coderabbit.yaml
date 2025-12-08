@@ -122,18 +122,3 @@ knowledge_base:
   opt_out: false
   learnings:
     scope: auto
-
-# Tool configuration
-tools:
-  ast-grep:
-    essential_rules: true
-  ruff:
-    enabled: false
-  markdownlint:
-    enabled: true
-  github-checks:
-    enabled: true
-    timeout_ms: 90000
-
-# Review settings
-abort_on_close: true

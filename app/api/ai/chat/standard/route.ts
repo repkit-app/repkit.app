@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ChatCompletion } from "openai/resources/chat/completions";
 import { createHmac } from "crypto";
 import {
   createChatCompletion,
@@ -20,6 +21,36 @@ function anonymize(value: string): string {
   return value
     ? createHmac("sha256", key).update(value).digest("hex").slice(0, 12)
     : "unknown";
+}
+
+function hasErrorCode(
+  error: unknown
+): error is { code?: string | number } {
+  return typeof error === "object" && error !== null && "code" in error;
+}
+
+function hasErrorStatus(error: unknown): error is { status?: number } {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+function isChatCompletionResult(
+  result: unknown
+): result is ChatCompletion & {
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+} {
+  if (!hasUsage(result)) return false;
+  const usage = result.usage;
+  return (
+    typeof usage === "object" &&
+    usage !== null &&
+    "prompt_tokens" in usage &&
+    "completion_tokens" in usage &&
+    "total_tokens" in usage
+  );
+}
+
+function hasUsage(result: unknown): result is { usage: unknown } {
+  return typeof result === "object" && result !== null && "usage" in result;
 }
 
 /**
@@ -159,6 +190,12 @@ export async function POST(request: NextRequest) {
 
     // Call OpenAI API
     const completion = await createChatCompletion("gpt-4o", body);
+    if (!isChatCompletionResult(completion)) {
+      return NextResponse.json(
+        { error: "OpenAI API error", message: "Unexpected response shape." },
+        { status: 502 }
+      );
+    }
 
     // Calculate cost
     const usage = completion.usage;
@@ -212,12 +249,12 @@ export async function POST(request: NextRequest) {
     const hasStatus = typeof error === "object" && error !== null && "status" in error;
     if (hasStatus) {
       const errorCode =
-        typeof error === "object" && error !== null && "code" in error
-          ? (error as { code?: string }).code
+        hasErrorCode(error) && typeof error.code === "string"
+          ? error.code
           : undefined;
       const errorStatus =
-        typeof error === "object" && error !== null && "status" in error
-          ? (error as { status?: number }).status
+        hasErrorStatus(error) && typeof error.status === "number"
+          ? error.status
           : 500;
 
       // OpenAI API error (rate limit, invalid request, etc.)

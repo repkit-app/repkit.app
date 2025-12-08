@@ -28,6 +28,9 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * Request payload for chat completions.
+ */
 export interface ChatCompletionRequest {
   messages: ChatMessage[];
   temperature?: number;
@@ -40,13 +43,14 @@ export interface ChatCompletionRequest {
 export async function createChatCompletion(
   model: "gpt-4o-mini" | "gpt-4o",
   request: ChatCompletionRequest
-) {
+): Promise<Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>> {
   const client = getOpenAIClient();
   const completion = await client.chat.completions.create({
     model,
     messages: request.messages,
     temperature: request.temperature ?? 0.7,
     max_tokens: request.max_tokens ?? 2000,
+    stream: false,
   });
 
   return completion;
@@ -58,9 +62,9 @@ export async function createChatCompletion(
  * Source: https://openai.com/api/pricing/
  */
 export const PRICING_USD_PER_MTOK = {
-  "gpt-4o-mini": { input: 0.60, output: 2.40 },
-  "gpt-4o": { input: 5.00, output: 20.0 },
-} as const;
+  "gpt-4o-mini": { input: 0.6, output: 2.4 },
+  "gpt-4o": { input: 5.0, output: 20.0 },
+} satisfies Record<"gpt-4o-mini" | "gpt-4o", { input: number; output: number }>;
 
 type SupportedModel = keyof typeof PRICING_USD_PER_MTOK;
 

@@ -10,7 +10,7 @@ const mockCompletion = (model: string) => ({
   choices: [
     {
       message: {
-        role: "assistant" as const,
+        role: "assistant",
         content: `hello from ${model}`,
       },
     },

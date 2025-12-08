@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description: "Track your workouts, get AI coaching, and achieve your fitness goals with RepKit.",
 };
 
+/**
+ * Root layout wrapper for RepKit pages.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{

@@ -14,6 +14,9 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
+/**
+ * Rate limit evaluation result for a single identifier.
+ */
 export interface RateLimitInfo {
   allowed: boolean;
   limit: number;
@@ -75,6 +78,9 @@ function cleanupExpired(now: number) {
  * @param identifier - Device token or IP address
  * @param hasDeviceToken - Whether the request includes a device token
  * @returns Object with allowed status and limit info
+ */
+/**
+ * Check if an identifier is within rate limits using Redis if configured, otherwise memory.
  */
 export async function checkRateLimit(
   identifier: string,
@@ -184,8 +190,8 @@ function normalizeRedisNumber(
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   }
-  if (value && typeof value === "object" && "result" in value) {
-    const resultVal = (value as { result?: unknown }).result;
+  if (isResultObject(value)) {
+    const resultVal = value.result;
     if (typeof resultVal === "number") return resultVal;
     if (typeof resultVal === "string") {
       const parsed = Number(resultVal);
@@ -195,8 +201,19 @@ function normalizeRedisNumber(
   return fallback;
 }
 
+function isResultObject(value: unknown): value is { result?: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.prototype.hasOwnProperty.call(value, "result")
+  );
+}
+
 /**
  * Get rate limit headers for HTTP response
+ */
+/**
+ * Build HTTP rate-limit headers for a single bucket.
  */
 export function getRateLimitHeaders(rateLimit: {
   limit: number;
@@ -213,6 +230,9 @@ export function getRateLimitHeaders(rateLimit: {
 /**
  * Get combined rate limit headers for both token and IP buckets
  * Exposes both limits so clients can react to either bucket nearing exhaustion
+ */
+/**
+ * Build combined HTTP rate-limit headers for token and IP buckets.
  */
 export function getRateLimitHeadersCombined(
   token:
@@ -236,18 +256,19 @@ export function getRateLimitHeadersCombined(
   }
 
   // Combined view (most restrictive limits)
-  const limits = [token, ip].filter(Boolean) as Array<{
-    remaining: number;
-    resetAt: number;
-    limit: number;
-  }>;
-  if (limits.length) {
-    h["X-RateLimit-Limit"] = String(Math.max(...limits.map((x) => x.limit)));
+  const typedLimits = [token, ip].filter(
+    (entry): entry is { remaining: number; resetAt: number; limit: number } =>
+      Boolean(entry)
+  );
+  if (typedLimits.length) {
+    h["X-RateLimit-Limit"] = String(
+      Math.max(...typedLimits.map((x) => x.limit))
+    );
     h["X-RateLimit-Remaining"] = String(
-      Math.min(...limits.map((x) => x.remaining))
+      Math.min(...typedLimits.map((x) => x.remaining))
     );
     h["X-RateLimit-Reset"] = new Date(
-      Math.min(...limits.map((x) => x.resetAt))
+      Math.min(...typedLimits.map((x) => x.resetAt))
     ).toISOString();
   }
 

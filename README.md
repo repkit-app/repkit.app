@@ -99,6 +99,13 @@ Requirements: `git`, `gh`, `jq`. Use `./issue start <n>` instead of the unavaila
   gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){comments(first:100){nodes{id author{login} body url createdAt}} reviewThreads(first:50){nodes{id isResolved comments(first:10){nodes{id author{login} body url createdAt}}}}}}}' -f owner=rustpoint -f repo=repkit.app -F pr=<number>
   ```
 
+### Code Style & Linting
+- ESLint config enforces:
+  - No `any`
+  - JSDoc on exported functions/classes/interfaces
+  - Warning on `as` casts (prefer type guards or `satisfies`)
+- Run `npm run lint`, `npm run typecheck`, and `npm test` before pushing.
+
 ## API Endpoints
 
 ### `/api/ai/chat/mini` (POST)
