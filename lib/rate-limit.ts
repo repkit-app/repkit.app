@@ -1,13 +1,26 @@
+import { Redis } from "@upstash/redis";
+
 /**
- * Simple in-memory rate limiter
- * Tracks requests per identifier (device token or IP address)
+ * In-memory rate limiter with optional shared backend (Upstash Redis).
+ * Tracks requests per identifier (device token or IP address).
  *
- * Note: This is a simple implementation suitable for single-instance deployments.
- * For production with multiple instances, use Redis or similar distributed storage.
+ * If UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are provided,
+ * rate limits are enforced per-instance + shared Redis. Otherwise, the
+ * limiter falls back to single-instance memory.
  */
 
 interface RateLimitEntry {
   count: number;
+  resetAt: number;
+}
+
+/**
+ * Rate limit evaluation result for a single identifier.
+ */
+export interface RateLimitInfo {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
   resetAt: number;
 }
 
@@ -23,6 +36,24 @@ const RATE_LIMITS = {
   ),
   WINDOW_MS: 60 * 60 * 1000, // 1 hour in milliseconds
 };
+
+const redisClient = createRedisClient();
+
+function createRedisClient(): Redis | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!url || !token) return null;
+
+  try {
+    return new Redis({ url, token });
+  } catch (error) {
+    console.error("[Rate Limit] Failed to initialize Redis, using in-memory store", {
+      error,
+    });
+    return null;
+  }
+}
 
 /**
  * Lazy cleanup: Remove expired entries on-demand
@@ -41,24 +72,35 @@ function cleanupExpired(now: number) {
 }
 
 /**
- * Check if a request is allowed under rate limits
+ * Check if a request is allowed under rate limits.
+ * Uses Redis if configured, otherwise falls back to in-memory store.
  *
  * @param identifier - Device token or IP address
  * @param hasDeviceToken - Whether the request includes a device token
  * @returns Object with allowed status and limit info
  */
-export function checkRateLimit(identifier: string, hasDeviceToken: boolean): {
-  allowed: boolean;
-  limit: number;
-  remaining: number;
-  resetAt: number;
-} {
+export async function checkRateLimit(
+  identifier: string,
+  hasDeviceToken: boolean
+): Promise<RateLimitInfo> {
   const now = Date.now();
-  cleanupExpired(now); // Lazy cleanup on each check
-
   const limit = hasDeviceToken
     ? RATE_LIMITS.WITH_TOKEN
     : RATE_LIMITS.WITHOUT_TOKEN;
+
+  if (!redisClient) {
+    return checkRateLimitMemory(identifier, limit, now);
+  }
+
+  return checkRateLimitRedis(redisClient, identifier, limit, now);
+}
+
+async function checkRateLimitMemory(
+  identifier: string,
+  limit: number,
+  now: number
+): Promise<RateLimitInfo> {
+  cleanupExpired(now); // Lazy cleanup on each check
 
   let entry = rateLimitStore.get(identifier);
 
@@ -93,8 +135,82 @@ export function checkRateLimit(identifier: string, hasDeviceToken: boolean): {
   };
 }
 
+async function checkRateLimitRedis(
+  client: Redis,
+  identifier: string,
+  limit: number,
+  now: number
+): Promise<RateLimitInfo> {
+  const windowStart = Math.floor(now / RATE_LIMITS.WINDOW_MS);
+  const key = `ratelimit:${identifier}:${windowStart}`;
+
+  try {
+    const pipeline = client.pipeline();
+    pipeline.incr(key);
+    pipeline.pexpire(key, RATE_LIMITS.WINDOW_MS);
+    pipeline.pttl(key);
+    const [incrResultRaw, , ttlResultRaw] = await pipeline.exec();
+
+    const count = normalizeRedisNumber(incrResultRaw);
+    const ttlMs = normalizeRedisNumber(ttlResultRaw, RATE_LIMITS.WINDOW_MS);
+    const resetAt = now + ttlMs;
+
+    if (count > limit) {
+      return {
+        allowed: false,
+        limit,
+        remaining: 0,
+        resetAt,
+      };
+    }
+
+    return {
+      allowed: true,
+      limit,
+      remaining: Math.max(0, limit - count),
+      resetAt,
+    };
+  } catch (error) {
+    console.error("[Rate Limit] Redis error, using in-memory fallback", {
+      error,
+    });
+    return checkRateLimitMemory(identifier, limit, now);
+  }
+}
+
+function normalizeRedisNumber(
+  value: unknown,
+  fallback: number = 0
+): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  if (isResultObject(value)) {
+    const resultVal = value.result;
+    if (typeof resultVal === "number") return resultVal;
+    if (typeof resultVal === "string") {
+      const parsed = Number(resultVal);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+  }
+  return fallback;
+}
+
+function isResultObject(value: unknown): value is { result?: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.prototype.hasOwnProperty.call(value, "result")
+  );
+}
+
 /**
  * Get rate limit headers for HTTP response
+ */
+/**
+ * Build HTTP rate-limit headers for a single bucket.
  */
 export function getRateLimitHeaders(rateLimit: {
   limit: number;
@@ -111,6 +227,9 @@ export function getRateLimitHeaders(rateLimit: {
 /**
  * Get combined rate limit headers for both token and IP buckets
  * Exposes both limits so clients can react to either bucket nearing exhaustion
+ */
+/**
+ * Build combined HTTP rate-limit headers for token and IP buckets.
  */
 export function getRateLimitHeadersCombined(
   token:
@@ -134,18 +253,19 @@ export function getRateLimitHeadersCombined(
   }
 
   // Combined view (most restrictive limits)
-  const limits = [token, ip].filter(Boolean) as Array<{
-    remaining: number;
-    resetAt: number;
-    limit: number;
-  }>;
-  if (limits.length) {
-    h["X-RateLimit-Limit"] = String(Math.max(...limits.map((x) => x.limit)));
+  const typedLimits = [token, ip].filter(
+    (entry): entry is { remaining: number; resetAt: number; limit: number } =>
+      Boolean(entry)
+  );
+  if (typedLimits.length) {
+    h["X-RateLimit-Limit"] = String(
+      Math.max(...typedLimits.map((x) => x.limit))
+    );
     h["X-RateLimit-Remaining"] = String(
-      Math.min(...limits.map((x) => x.remaining))
+      Math.min(...typedLimits.map((x) => x.remaining))
     );
     h["X-RateLimit-Reset"] = new Date(
-      Math.min(...limits.map((x) => x.resetAt))
+      Math.min(...typedLimits.map((x) => x.resetAt))
     ).toISOString();
   }
 
