@@ -79,16 +79,16 @@ npm run lint
 This repo includes a lightweight issue helper inspired by the main RepKit tooling:
 
 ```bash
-./issue start <number>   # create/switch branch, assign + label
-./issue push <number>    # push branch, create/update draft PR
-./issue ready <number>   # mark PR ready for review
-./issue check <number>   # show PR checks/review/mergeability
-./issue status <number>  # summarize branch/PR/CI
-./issue merge <number>   # squash-merge PR and delete branch
-./issue rebase <number>  # rebase branch onto origin/main
-./issue cleanup <number> # delete local/remote branches
-./issue abandon <number> # close PR and delete branches
-./issue list             # list local issue branches
+bash scripts/issue.sh start <number>   # create/switch branch, assign + label
+bash scripts/issue.sh push <number>    # push branch, create/update draft PR
+bash scripts/issue.sh ready <number>   # mark PR ready for review
+bash scripts/issue.sh check <number>   # show PR checks/review/mergeability
+bash scripts/issue.sh status <number>  # summarize branch/PR/CI
+bash scripts/issue.sh merge <number>   # squash-merge PR and delete branch
+bash scripts/issue.sh rebase <number>  # rebase branch onto origin/main
+bash scripts/issue.sh cleanup <number> # delete local/remote branches
+bash scripts/issue.sh abandon <number> # close PR and delete branches
+bash scripts/issue.sh list             # list local issue branches
 ```
 
 Requirements: `git`, `gh`, `jq`. Use `./issue start <n>` instead of the unavailable `/issue` command.
