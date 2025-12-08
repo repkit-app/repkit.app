@@ -11,9 +11,12 @@
 
 const crypto = require('crypto');
 
-// Configuration
-const BASE_URL = 'http://localhost:3000';
-const HMAC_SECRET = '772c22aaaf2444bbd6f859d2ae55c8847e59da949adc8aec0f37eeb5d68bb3f9';
+// Configuration (overridable via env)
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const HMAC_SECRET =
+  process.env.HMAC_SECRET ||
+  '772c22aaaf2444bbd6f859d2ae55c8847e59da949adc8aec0f37eeb5d68bb3f9';
+const DEVICE_TOKEN = process.env.X_DEVICE_TOKEN || 'test-device-token';
 
 // Test payload
 const testBody = {
@@ -41,7 +44,7 @@ function generateSignature(body, timestamp) {
 async function makeRequest(endpoint, body, signature, timestamp) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Device-Token': 'test-device-token',
+    'X-Device-Token': DEVICE_TOKEN,
   };
 
   if (signature) {
@@ -70,6 +73,11 @@ async function makeRequest(endpoint, body, signature, timestamp) {
 async function runTests() {
   console.log('🔐 Testing HMAC Request Signature Validation\n');
   console.log('=' .repeat(60));
+  console.log(`Base URL: ${BASE_URL}`);
+  console.log(
+    `HMAC secret: ${HMAC_SECRET === process.env.HMAC_SECRET ? '(from env)' : '(default sample)'}`,
+  );
+  console.log(`Device token: ${DEVICE_TOKEN}\n`);
 
   // Test 1: Valid signature
   console.log('\n1️⃣  Test: Valid signature (should succeed)');

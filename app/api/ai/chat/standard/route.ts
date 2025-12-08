@@ -115,10 +115,9 @@ export async function POST(request: NextRequest) {
 
     // Check rate limits (require BOTH token and IP to be within limits)
     // This prevents bypassing limits by rotating X-Device-Token
-    const tokenRate = deviceToken ? checkRateLimit(deviceToken, true) : null;
-    const ipRate = checkRateLimit(ip, false);
+    const tokenRate = deviceToken ? await checkRateLimit(deviceToken, true) : null;
+    const ipRate = await checkRateLimit(ip, false);
     const violated = tokenRate && !tokenRate.allowed ? tokenRate : !ipRate.allowed ? ipRate : null;
-    const effective = tokenRate ?? ipRate;
 
     if (violated) {
       console.warn("[Rate Limit] Exceeded:", {

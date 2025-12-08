@@ -1,13 +1,23 @@
+import { Redis } from "@upstash/redis";
+
 /**
- * Simple in-memory rate limiter
- * Tracks requests per identifier (device token or IP address)
+ * In-memory rate limiter with optional shared backend (Upstash Redis).
+ * Tracks requests per identifier (device token or IP address).
  *
- * Note: This is a simple implementation suitable for single-instance deployments.
- * For production with multiple instances, use Redis or similar distributed storage.
+ * If UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are provided,
+ * rate limits are enforced per-instance + shared Redis. Otherwise, the
+ * limiter falls back to single-instance memory.
  */
 
 interface RateLimitEntry {
   count: number;
+  resetAt: number;
+}
+
+export interface RateLimitInfo {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
   resetAt: number;
 }
 
@@ -23,6 +33,24 @@ const RATE_LIMITS = {
   ),
   WINDOW_MS: 60 * 60 * 1000, // 1 hour in milliseconds
 };
+
+const redisClient = createRedisClient();
+
+function createRedisClient(): Redis | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!url || !token) return null;
+
+  try {
+    return new Redis({ url, token });
+  } catch (error) {
+    console.error("[Rate Limit] Failed to initialize Redis, using in-memory store", {
+      error,
+    });
+    return null;
+  }
+}
 
 /**
  * Lazy cleanup: Remove expired entries on-demand
@@ -41,24 +69,35 @@ function cleanupExpired(now: number) {
 }
 
 /**
- * Check if a request is allowed under rate limits
+ * Check if a request is allowed under rate limits.
+ * Uses Redis if configured, otherwise falls back to in-memory store.
  *
  * @param identifier - Device token or IP address
  * @param hasDeviceToken - Whether the request includes a device token
  * @returns Object with allowed status and limit info
  */
-export function checkRateLimit(identifier: string, hasDeviceToken: boolean): {
-  allowed: boolean;
-  limit: number;
-  remaining: number;
-  resetAt: number;
-} {
+export async function checkRateLimit(
+  identifier: string,
+  hasDeviceToken: boolean
+): Promise<RateLimitInfo> {
   const now = Date.now();
-  cleanupExpired(now); // Lazy cleanup on each check
-
   const limit = hasDeviceToken
     ? RATE_LIMITS.WITH_TOKEN
     : RATE_LIMITS.WITHOUT_TOKEN;
+
+  if (!redisClient) {
+    return checkRateLimitMemory(identifier, limit, now);
+  }
+
+  return checkRateLimitRedis(redisClient, identifier, limit, now);
+}
+
+async function checkRateLimitMemory(
+  identifier: string,
+  limit: number,
+  now: number
+): Promise<RateLimitInfo> {
+  cleanupExpired(now); // Lazy cleanup on each check
 
   let entry = rateLimitStore.get(identifier);
 
@@ -91,6 +130,53 @@ export function checkRateLimit(identifier: string, hasDeviceToken: boolean): {
     remaining: limit - entry.count,
     resetAt: entry.resetAt,
   };
+}
+
+async function checkRateLimitRedis(
+  client: Redis,
+  identifier: string,
+  limit: number,
+  now: number
+): Promise<RateLimitInfo> {
+  const windowStart = Math.floor(now / RATE_LIMITS.WINDOW_MS);
+  const key = `ratelimit:${identifier}:${windowStart}`;
+
+  try {
+    const pipeline = client.pipeline();
+    pipeline.incr(key);
+    pipeline.pexpire(key, RATE_LIMITS.WINDOW_MS);
+    pipeline.pttl(key);
+    const [incrResult, , ttlResult] = await pipeline.exec();
+
+    const count = Number((incrResult as { result?: number } | null)?.result ?? 0);
+    const ttlMsRaw = (ttlResult as { result?: number } | null)?.result;
+    const ttlMs =
+      typeof ttlMsRaw === "number" && ttlMsRaw > 0
+        ? ttlMsRaw
+        : RATE_LIMITS.WINDOW_MS;
+    const resetAt = now + ttlMs;
+
+    if (count > limit) {
+      return {
+        allowed: false,
+        limit,
+        remaining: 0,
+        resetAt,
+      };
+    }
+
+    return {
+      allowed: true,
+      limit,
+      remaining: Math.max(0, limit - count),
+      resetAt,
+    };
+  } catch (error) {
+    console.error("[Rate Limit] Redis error, using in-memory fallback", {
+      error,
+    });
+    return checkRateLimitMemory(identifier, limit, now);
+  }
 }
 
 /**
