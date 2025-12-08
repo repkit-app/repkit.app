@@ -93,6 +93,12 @@ bash scripts/issue.sh list             # list local issue branches
 
 Requirements: `git`, `gh`, `jq`. Use `./issue start <n>` instead of the unavailable `/issue` command.
 
+### PR Reviews
+- Use GraphQL to fetch all review comments (some bots, e.g., bugbot, do not appear via REST):
+  ```bash
+  gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){comments(first:100){nodes{id author{login} body url createdAt}} reviewThreads(first:50){nodes{id isResolved comments(first:10){nodes{id author{login} body url createdAt}}}}}}}' -f owner=rustpoint -f repo=repkit.app -F pr=<number>
+  ```
+
 ## API Endpoints
 
 ### `/api/ai/chat/mini` (POST)

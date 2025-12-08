@@ -146,14 +146,10 @@ async function checkRateLimitRedis(
     pipeline.incr(key);
     pipeline.pexpire(key, RATE_LIMITS.WINDOW_MS);
     pipeline.pttl(key);
-    const [incrResult, , ttlResult] = await pipeline.exec();
+    const [incrResultRaw, , ttlResultRaw] = await pipeline.exec();
 
-    const count = Number((incrResult as { result?: number } | null)?.result ?? 0);
-    const ttlMsRaw = (ttlResult as { result?: number } | null)?.result;
-    const ttlMs =
-      typeof ttlMsRaw === "number" && ttlMsRaw > 0
-        ? ttlMsRaw
-        : RATE_LIMITS.WINDOW_MS;
+    const count = normalizeRedisNumber(incrResultRaw);
+    const ttlMs = normalizeRedisNumber(ttlResultRaw, RATE_LIMITS.WINDOW_MS);
     const resetAt = now + ttlMs;
 
     if (count > limit) {
@@ -177,6 +173,26 @@ async function checkRateLimitRedis(
     });
     return checkRateLimitMemory(identifier, limit, now);
   }
+}
+
+function normalizeRedisNumber(
+  value: unknown,
+  fallback: number = 0
+): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  if (value && typeof value === "object" && "result" in value) {
+    const resultVal = (value as { result?: unknown }).result;
+    if (typeof resultVal === "number") return resultVal;
+    if (typeof resultVal === "string") {
+      const parsed = Number(resultVal);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+  }
+  return fallback;
 }
 
 /**

@@ -195,6 +195,8 @@ cmd_push() {
   local pr_title pr_body tmp_body
   pr_title="[#$issue] ${title:-Issue $issue}"
   tmp_body=$(mktemp -t repkit-pr-XXXX.md)
+  cleanup_tmp() { rm -f "$tmp_body"; }
+  trap cleanup_tmp EXIT
   {
     echo "## Summary"
     echo "Implements changes for issue #$issue – ${title:-Untitled}."
@@ -215,6 +217,7 @@ cmd_push() {
     error "Failed to create PR"
     exit 1
   fi
+  cleanup_tmp
 }
 
 cmd_status() {
