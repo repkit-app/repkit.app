@@ -193,7 +193,7 @@ Same request/response format as `/mini` endpoint.
 
 **Status**: ✅ **Implemented**
 
-**Rate limiting note:** Limits use Upstash Redis when `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are set; otherwise they run in-memory and apply per instance only.
+**Rate-limiting note:** Limits use Upstash Redis when `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are set; otherwise they run in-memory and apply per instance only.
 
 ## Deployment
 
