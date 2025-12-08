@@ -79,9 +79,6 @@ function cleanupExpired(now: number) {
  * @param hasDeviceToken - Whether the request includes a device token
  * @returns Object with allowed status and limit info
  */
-/**
- * Check if an identifier is within rate limits using Redis if configured, otherwise memory.
- */
 export async function checkRateLimit(
   identifier: string,
   hasDeviceToken: boolean

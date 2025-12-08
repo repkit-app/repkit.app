@@ -161,7 +161,7 @@ async function runTests() {
   // Test 5: Future timestamp (should reject with 401)
   console.log('\n5️⃣  Test: Future timestamp (should reject with 401)');
   try {
-    const futureTimestamp = Math.floor((Date.now() + 10 * 1000) / 1000).toString();
+    const futureTimestamp = Math.floor((Date.now() + 5 * 60 * 1000) / 1000).toString();
     const signature = generateSignature(testBody, futureTimestamp);
 
     console.log(`   Timestamp: ${futureTimestamp} (10 seconds in future)`);

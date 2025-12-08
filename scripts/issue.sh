@@ -192,7 +192,7 @@ cmd_push() {
     return
   fi
 
-  local pr_title pr_body tmp_body
+  local pr_title tmp_body
   pr_title="[#$issue] ${title:-Issue $issue}"
   tmp_body=$(mktemp -t repkit-pr-XXXX.md)
   cleanup_tmp() { rm -f "$tmp_body"; }

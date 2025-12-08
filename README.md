@@ -130,7 +130,7 @@ OpenAI proxy using `gpt-4o-mini` model (cost-effective for simple queries).
 - `X-Request-Signature: <hex-hmac-sha256(body+timestamp)>`
 - `X-Request-Timestamp: <unix-seconds>`
 
-**HMAC signing**
+#### HMAC Signing
 - Compute `timestamp = Math.floor(Date.now() / 1000)`
 - Compute `signature = HMAC_SHA256(HMAC_SECRET, JSON.stringify(body) + timestamp)` as a hex string
 - Send both headers; requests older than 5 minutes or with mismatched signatures are rejected (401)
