@@ -49,10 +49,14 @@ export async function POST(request: NextRequest) {
     const xffFirst = xff.split(",")[0]?.trim();
     const ip = cfIp || realIp || xffFirst || "0.0.0.0";
 
-    // Parse and validate request body (needed for HMAC signature validation)
+    // Get raw body text BEFORE parsing (needed for HMAC signature validation)
+    // CRITICAL: We must use the original request body text for signature validation
+    // because JSON.stringify(body) produces different output than Swift's JSONEncoder
+    let bodyText: string;
     let body: ChatCompletionRequest;
     try {
-      body = await request.json();
+      bodyText = await request.text();
+      body = JSON.parse(bodyText);
     } catch {
       return NextResponse.json(
         { error: "Invalid JSON body" },
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const bodyText = JSON.stringify(body);
+    // Use the original body text for signature validation (not re-serialized)
     const payload = bodyText + timestamp;
     const expectedSignature = createHmac("sha256", secret)
       .update(payload)
