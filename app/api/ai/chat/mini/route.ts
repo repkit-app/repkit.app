@@ -24,11 +24,11 @@ function anonymize(value: string): string {
 }
 
 /**
- * OpenAI API Proxy - Agentic Model (gpt-5.2)
+ * OpenAI API Proxy - Mini Model (gpt-5-mini)
  * Endpoint: POST /api/ai/chat/mini
  *
  * Purpose: Proxy requests to OpenAI's Chat Completions API
- * using GPT-5.2 which is optimized for agentic tasks (tool calling).
+ * using GPT-5 mini for fast, cost-effective responses.
  *
  * Rate Limits:
  * - 100 requests/hour with X-Device-Token header
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call OpenAI API
-    const completion = await createChatCompletion("gpt-5.2", body);
+    const completion = await createChatCompletion("gpt-5-mini", body);
     if (!isChatCompletionResult(completion)) {
       return NextResponse.json(
         { error: "OpenAI API error", message: "Unexpected response shape." },
@@ -171,23 +171,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate cost
+    // Calculate cost (accounting for cached input tokens at reduced rate)
     const usage = completion.usage;
+    const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
     const cost = usage
-      ? calculateCost("gpt-5.2", usage.prompt_tokens, usage.completion_tokens)
+      ? calculateCost(
+          "gpt-5-mini",
+          usage.prompt_tokens,
+          usage.completion_tokens,
+          cachedTokens
+        )
       : 0;
 
     // Log request details
     const duration = Date.now() - startTime;
     console.log("[API Request]", {
       requestId,
-      model: "gpt-5.2",
+      model: "gpt-5-mini",
       identifier: deviceToken
         ? `token#${anonymize(deviceToken)}`
         : `ip#${anonymize(ip)}`,
       userAgent: request.headers.get("user-agent") || "unknown",
       messages: body.messages.length,
       promptTokens: usage?.prompt_tokens || 0,
+      cachedTokens,
       completionTokens: usage?.completion_tokens || 0,
       totalTokens: usage?.total_tokens || 0,
       cost: `$${cost.toFixed(6)}`,
@@ -213,7 +220,7 @@ export async function POST(request: NextRequest) {
     // Log error details
     console.error("[API Error]", {
       requestId,
-      model: "gpt-5.2",
+      model: "gpt-5-mini",
       error: errorMessage,
       type: errorType,
       duration: `${duration}ms`,
