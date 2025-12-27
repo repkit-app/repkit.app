@@ -273,9 +273,9 @@ cd ~/code/repkit-app
 # 3. Remove worktree
 git worktree remove ~/code/repkit-app/worktrees/issue-<issue> --force
 
-# 4. Delete branches
-git branch -D issue-<issue>-* 2>/dev/null || true
-git push origin --delete issue-<issue>-* 2>/dev/null || true
+# 4. Delete branches (find matching branches first, wildcards don't work in git)
+git branch --list "issue-<issue>-*" | xargs -r git branch -D 2>/dev/null || true
+git branch -r --list "origin/issue-<issue>-*" | sed 's|origin/||' | xargs -r -I {} git push origin --delete {} 2>/dev/null || true
 
 # 5. Sync board
 /validate
