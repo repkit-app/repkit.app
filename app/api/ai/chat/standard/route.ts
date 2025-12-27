@@ -36,7 +36,12 @@ function hasErrorStatus(error: unknown): error is { status?: number } {
 function isChatCompletionResult(
   result: unknown
 ): result is ChatCompletion & {
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    prompt_tokens_details?: { cached_tokens?: number | null };
+  };
 } {
   if (!hasUsage(result)) return false;
   const usage = result.usage;
@@ -54,11 +59,11 @@ function hasUsage(result: unknown): result is { usage: unknown } {
 }
 
 /**
- * OpenAI API Proxy - Standard Model (gpt-4o)
+ * OpenAI API Proxy - Standard Model (gpt-5.2)
  * Endpoint: POST /api/ai/chat/standard
  *
  * Purpose: Proxy requests to OpenAI's Chat Completions API
- * using the more capable gpt-4o model for complex queries.
+ * using GPT-5.2 for agentic tasks and complex tool calling.
  *
  * Rate Limits:
  * - 100 requests/hour with X-Device-Token header
@@ -193,7 +198,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call OpenAI API
-    const completion = await createChatCompletion("gpt-4o", body);
+    const completion = await createChatCompletion("gpt-5.2", body);
     if (!isChatCompletionResult(completion)) {
       return NextResponse.json(
         { error: "OpenAI API error", message: "Unexpected response shape." },
@@ -201,23 +206,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate cost
+    // Calculate cost (accounting for cached input tokens at reduced rate)
     const usage = completion.usage;
+    const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
     const cost = usage
-      ? calculateCost("gpt-4o", usage.prompt_tokens, usage.completion_tokens)
+      ? calculateCost(
+          "gpt-5.2",
+          usage.prompt_tokens,
+          usage.completion_tokens,
+          cachedTokens
+        )
       : 0;
 
     // Log request details
     const duration = Date.now() - startTime;
     console.log("[API Request]", {
       requestId,
-      model: "gpt-4o",
+      model: "gpt-5.2",
       identifier: deviceToken
         ? `token#${anonymize(deviceToken)}`
         : `ip#${anonymize(ip)}`,
       userAgent: request.headers.get("user-agent") || "unknown",
       messages: body.messages.length,
       promptTokens: usage?.prompt_tokens || 0,
+      cachedTokens,
       completionTokens: usage?.completion_tokens || 0,
       totalTokens: usage?.total_tokens || 0,
       cost: `$${cost.toFixed(6)}`,
@@ -243,7 +255,7 @@ export async function POST(request: NextRequest) {
     // Log error details
     console.error("[API Error]", {
       requestId,
-      model: "gpt-4o",
+      model: "gpt-5.2",
       error: errorMessage,
       type: errorType,
       duration: `${duration}ms`,
