@@ -41,7 +41,7 @@ export interface ChatCompletionRequest {
  * Create a chat completion using the specified model
  */
 export async function createChatCompletion(
-  model: "gpt-4o-mini" | "gpt-4o",
+  model: "gpt-4o-mini" | "gpt-4o" | "gpt-5.2",
   request: ChatCompletionRequest
 ): Promise<Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>> {
   const client = getOpenAIClient();
@@ -58,13 +58,17 @@ export async function createChatCompletion(
 
 /**
  * Official OpenAI pricing (per 1M tokens)
- * Updated: October 2025
+ * Updated: December 2025
  * Source: https://openai.com/api/pricing/
  */
 export const PRICING_USD_PER_MTOK = {
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "gpt-4o": { input: 2.5, output: 10.0 },
-} satisfies Record<"gpt-4o-mini" | "gpt-4o", { input: number; output: number }>;
+  "gpt-5.2": { input: 1.75, cached: 0.175, output: 14.0 },
+} satisfies Record<
+  "gpt-4o-mini" | "gpt-4o" | "gpt-5.2",
+  { input: number; output: number; cached?: number }
+>;
 
 type SupportedModel = keyof typeof PRICING_USD_PER_MTOK;
 
@@ -73,6 +77,7 @@ type SupportedModel = keyof typeof PRICING_USD_PER_MTOK;
  * Prices as of December 2025 (per 1M tokens):
  * - gpt-4o-mini: $0.15 input, $0.60 output
  * - gpt-4o: $2.50 input, $10.00 output
+ * - gpt-5.2: $1.75 input, $14.00 output (optimized for agentic tasks)
  */
 export function calculateCost(
   model: SupportedModel,

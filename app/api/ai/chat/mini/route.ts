@@ -24,11 +24,11 @@ function anonymize(value: string): string {
 }
 
 /**
- * OpenAI API Proxy - Mini Model (gpt-4o-mini)
+ * OpenAI API Proxy - Agentic Model (gpt-5.2)
  * Endpoint: POST /api/ai/chat/mini
  *
  * Purpose: Proxy requests to OpenAI's Chat Completions API
- * using the cost-effective gpt-4o-mini model.
+ * using GPT-5.2 which is optimized for agentic tasks (tool calling).
  *
  * Rate Limits:
  * - 100 requests/hour with X-Device-Token header
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call OpenAI API
-    const completion = await createChatCompletion("gpt-4o-mini", body);
+    const completion = await createChatCompletion("gpt-5.2", body);
     if (!isChatCompletionResult(completion)) {
       return NextResponse.json(
         { error: "OpenAI API error", message: "Unexpected response shape." },
@@ -174,18 +174,14 @@ export async function POST(request: NextRequest) {
     // Calculate cost
     const usage = completion.usage;
     const cost = usage
-      ? calculateCost(
-          "gpt-4o-mini",
-          usage.prompt_tokens,
-          usage.completion_tokens
-        )
+      ? calculateCost("gpt-5.2", usage.prompt_tokens, usage.completion_tokens)
       : 0;
 
     // Log request details
     const duration = Date.now() - startTime;
     console.log("[API Request]", {
       requestId,
-      model: "gpt-4o-mini",
+      model: "gpt-5.2",
       identifier: deviceToken
         ? `token#${anonymize(deviceToken)}`
         : `ip#${anonymize(ip)}`,
@@ -217,7 +213,7 @@ export async function POST(request: NextRequest) {
     // Log error details
     console.error("[API Error]", {
       requestId,
-      model: "gpt-4o-mini",
+      model: "gpt-5.2",
       error: errorMessage,
       type: errorType,
       duration: `${duration}ms`,
