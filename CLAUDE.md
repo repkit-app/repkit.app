@@ -188,7 +188,7 @@ After replying, manually click "Resolve conversation" on GitHub web UI for each 
 
 ❌ **WRONG** (breaks automation):
 ```bash
-git worktree add ~/code/repkit.app-42 -b issue-42-feature
+git worktree add ~/code/repkit-app/worktrees/issue-42 -b issue-42-feature
 gh issue create ...
 ```
 
@@ -210,10 +210,10 @@ gh issue create ...
 
 Each issue gets its own directory:
 ```
-~/code/repkit.app/      # Main repository
-~/code/repkit.app-26/   # API proxy implementation
-~/code/repkit.app-102/  # i18n routing
-~/code/repkit.app-103/  # Landing page
+~/code/repkit-app/                      # Main repository
+~/code/repkit-app/worktrees/issue-26/   # API proxy implementation
+~/code/repkit-app/worktrees/issue-102/  # i18n routing
+~/code/repkit-app/worktrees/issue-103/  # Landing page
 ```
 
 Don't mix work from multiple issues in one worktree.
@@ -234,10 +234,10 @@ gh issue list | grep "feature X"
 /issue start 42
 
 # 3. Change to worktree
-cd ~/code/repkit.app-42
+cd ~/code/repkit-app/worktrees/issue-42
 
 # 4. Confirm to user
-"✓ Started work on #42. Worktree at ~/code/repkit.app-42."
+"✓ Started work on #42. Worktree at ~/code/repkit-app/worktrees/issue-42."
 ```
 
 ---

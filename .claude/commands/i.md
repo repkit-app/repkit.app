@@ -62,7 +62,7 @@ The `/i` command is a convenience shortcut for frequently-used issue management:
 ```bash
 # Quick workflow (fully automated)
 /i start 15          # Automated: creates worktree, assigns, syncs board
-cd ~/code/repkit-15
+cd ~/code/repkit-app/worktrees/issue-15
 # ... code ...
 /i push              # Create PR
 /i check             # Review comments & address feedback
