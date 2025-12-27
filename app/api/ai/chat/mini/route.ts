@@ -273,7 +273,12 @@ function hasErrorStatus(error: unknown): error is { status?: number } {
 function isChatCompletionResult(
   result: unknown
 ): result is ChatCompletion & {
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    prompt_tokens_details?: { cached_tokens?: number | null };
+  };
 } {
   if (!hasUsage(result)) return false;
   const usage = result.usage;

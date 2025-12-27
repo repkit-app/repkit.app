@@ -89,7 +89,7 @@ export function calculateCost(
 ): number {
   const price = PRICING_USD_PER_MTOK[model];
   const cachedRate = "cached" in price ? price.cached : price.input;
-  const uncachedInputTokens = promptTokens - cachedInputTokens;
+  const uncachedInputTokens = Math.max(0, promptTokens - cachedInputTokens);
   const inputCost = (uncachedInputTokens / 1_000_000) * price.input;
   const cachedCost = (cachedInputTokens / 1_000_000) * cachedRate;
   const outputCost = (completionTokens / 1_000_000) * price.output;
