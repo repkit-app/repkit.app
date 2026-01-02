@@ -39,17 +39,28 @@ export interface ChatCompletionRequest {
 
 /**
  * Create a chat completion using the specified model
+ *
+ * Note: gpt-5-* models require max_completion_tokens instead of max_tokens.
+ * The OpenAI SDK types don't enforce this at compile time because max_tokens
+ * is still valid for older models - it's a runtime error from OpenAI.
  */
 export async function createChatCompletion(
   model: "gpt-4o-mini" | "gpt-4o" | "gpt-5-mini" | "gpt-5.2",
   request: ChatCompletionRequest
 ): Promise<Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>> {
   const client = getOpenAIClient();
+
+  // gpt-5-* models use max_completion_tokens, older models use max_tokens
+  const isGpt5 = model.startsWith("gpt-5");
+  const tokenLimit = request.max_tokens ?? 2000;
+
   const completion = await client.chat.completions.create({
     model,
     messages: request.messages,
     temperature: request.temperature ?? 0.7,
-    max_tokens: request.max_tokens ?? 2000,
+    ...(isGpt5
+      ? { max_completion_tokens: tokenLimit }
+      : { max_tokens: tokenLimit }),
     stream: false,
   });
 

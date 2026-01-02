@@ -49,3 +49,4 @@ next-env.d.ts
 *.swo
 *~
 worktrees/
+.claude-cache/

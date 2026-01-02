@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
       duration: `${duration}ms`,
     });
 
-    // Handle OpenAI API errors
+    // Handle OpenAI API errors - preserve original status and message
     const hasStatus = typeof error === "object" && error !== null && "status" in error;
     if (hasStatus) {
       const errorCode =
@@ -238,14 +238,23 @@ export async function POST(request: NextRequest) {
           ? error.status
           : 500;
 
-      // OpenAI API error (rate limit, invalid request, etc.)
+      // Preserve original error message for debugging
+      // 4xx errors are client errors (don't retry), 5xx and 429 may be retried
+      const isClientError = errorStatus >= 400 && errorStatus < 500 && errorStatus !== 429;
+
       return NextResponse.json(
         {
           error: "OpenAI API error",
-          message: "An error occurred while processing your request. Please try again.",
+          message: errorMessage,
           code: errorCode || "unknown",
+          retryable: !isClientError,
         },
-        { status: errorStatus === 429 ? 503 : 500 }
+        {
+          status: errorStatus === 429 ? 503 : errorStatus,
+          headers: {
+            "X-Request-Id": requestId,
+          },
+        }
       );
     }
 
@@ -255,7 +264,7 @@ export async function POST(request: NextRequest) {
         error: "Internal server error",
         message: "An unexpected error occurred. Please try again later.",
       },
-      { status: 500 }
+      { status: 500, headers: { "X-Request-Id": requestId } }
     );
   }
 }
