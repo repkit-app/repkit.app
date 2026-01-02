@@ -49,7 +49,7 @@ export interface ChatMessage {
  */
 export interface ToolParameterDefinition {
   type: string;
-  description: string;
+  description?: string;
   enum?: string[];
   [key: string]: unknown; // Allow additional JSON Schema properties
 }
@@ -61,7 +61,7 @@ export interface ToolParameterDefinition {
 export interface ToolParameters {
   type: "object";
   properties: Record<string, ToolParameterDefinition>;
-  required: string[];
+  required?: string[];
   [key: string]: unknown; // Allow additional JSON Schema properties
 }
 
