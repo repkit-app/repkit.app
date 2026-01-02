@@ -21,12 +21,80 @@ function getOpenAIClient(): OpenAI {
 }
 
 /**
- * Chat completion request types
+ * Tool call information returned by assistant messages
+ */
+export interface ToolCallInfo {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string; // JSON string
+  };
+}
+
+/**
+ * Chat message types for OpenAI API
+ * Supports system, user, assistant, and tool roles
  */
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null; // Can be null for tool calls
+  name?: string; // Function name for tool results
+  tool_call_id?: string; // Required when role is "tool"
+  tool_calls?: ToolCallInfo[]; // For assistant messages with tool calls
 }
+
+/**
+ * Tool parameter definition (JSON Schema subset)
+ */
+export interface ToolParameterDefinition {
+  type: string;
+  description: string;
+  enum?: string[];
+  [key: string]: unknown; // Allow additional JSON Schema properties
+}
+
+/**
+ * Tool parameters object (JSON Schema object type)
+ * Uses index signature to be compatible with OpenAI SDK's FunctionParameters
+ */
+export interface ToolParameters {
+  type: "object";
+  properties: Record<string, ToolParameterDefinition>;
+  required: string[];
+  [key: string]: unknown; // Allow additional JSON Schema properties
+}
+
+/**
+ * Function definition for a tool
+ */
+export interface ToolFunctionDefinition {
+  name: string;
+  description: string;
+  parameters: ToolParameters;
+  strict?: boolean; // For structured outputs
+}
+
+/**
+ * Tool definition for OpenAI API
+ */
+export interface ToolDefinition {
+  type: "function";
+  function: ToolFunctionDefinition;
+}
+
+/**
+ * Tool choice options
+ * - "auto": Let the model decide
+ * - "none": Don't call any tools
+ * - "required": Must call a tool
+ * - { type: "function", function: { name: string } }: Call specific function
+ */
+export type ToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "function"; function: { name: string } };
 
 /**
  * Request payload for chat completions.
@@ -35,6 +103,8 @@ export interface ChatCompletionRequest {
   messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
+  tools?: ToolDefinition[];
+  tool_choice?: ToolChoice;
 }
 
 /**
@@ -56,12 +126,16 @@ export async function createChatCompletion(
 
   const completion = await client.chat.completions.create({
     model,
-    messages: request.messages,
+    messages: request.messages as Parameters<
+      typeof client.chat.completions.create
+    >[0]["messages"],
     temperature: request.temperature ?? 0.7,
     ...(isGpt5
       ? { max_completion_tokens: tokenLimit }
       : { max_tokens: tokenLimit }),
     stream: false,
+    ...(request.tools && { tools: request.tools }),
+    ...(request.tool_choice && { tool_choice: request.tool_choice }),
   });
 
   return completion;
