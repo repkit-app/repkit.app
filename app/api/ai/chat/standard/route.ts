@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
           retryable: !isClientError,
         },
         {
-          status: errorStatus === 429 ? 503 : errorStatus,
+          status: errorStatus,
           headers: {
             "X-Request-Id": requestId,
           },
