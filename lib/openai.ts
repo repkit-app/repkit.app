@@ -124,21 +124,41 @@ export async function createChatCompletion(
   const isGpt5 = model.startsWith("gpt-5");
   const tokenLimit = request.max_tokens ?? 2000;
 
-  const completion = await client.chat.completions.create({
-    model,
-    messages: request.messages as Parameters<
-      typeof client.chat.completions.create
-    >[0]["messages"],
-    temperature: request.temperature ?? 0.7,
-    ...(isGpt5
-      ? { max_completion_tokens: tokenLimit }
-      : { max_tokens: tokenLimit }),
-    stream: false,
-    ...(request.tools && { tools: request.tools }),
-    ...(request.tool_choice && { tool_choice: request.tool_choice }),
-  });
+  try {
+    const completion = await client.chat.completions.create({
+      model,
+      messages: request.messages as Parameters<
+        typeof client.chat.completions.create
+      >[0]["messages"],
+      temperature: request.temperature ?? 0.7,
+      ...(isGpt5
+        ? { max_completion_tokens: tokenLimit }
+        : { max_tokens: tokenLimit }),
+      stream: false,
+      ...(request.tools && { tools: request.tools }),
+      ...(request.tool_choice && { tool_choice: request.tool_choice }),
+    });
 
-  return completion;
+    return completion;
+  } catch (error: unknown) {
+    // Sentry: Report OpenAI API errors
+    const Sentry = await import("@sentry/nextjs");
+
+    Sentry.captureException(error, {
+      tags: {
+        service: "openai",
+        model,
+      },
+      extra: {
+        message_count: request.messages.length,
+        has_tools: Boolean(request.tools),
+        // DO NOT include message content or tool definitions
+      },
+    });
+
+    // Re-throw to let API route handle the response
+    throw error;
+  }
 }
 
 /**
