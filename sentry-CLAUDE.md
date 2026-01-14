@@ -221,7 +221,7 @@ export async function GET() {
 
 ### Production Verification
 
-1. Check Sentry: https://sentry.io/organizations/rustpoint/issues/
+1. Check Sentry: [Sentry Dashboard](https://sentry.io/organizations/rustpoint/issues/)
 2. Verify errors appear with:
    - `environment: production` tag
    - Readable stack traces (source maps applied)
@@ -239,6 +239,6 @@ Session replays are sampled (10%) to avoid performance impact.
 ## See Also
 
 - [Sentry Next.js Docs](https://docs.sentry.io/platforms/javascript/guides/nextjs/)
-- [Root CLAUDE.md](../../CLAUDE.md) for project-wide privacy policies
+- [Root CLAUDE.md](./CLAUDE.md) for project-wide privacy policies
 - Issue #34: Original Sentry integration
 - Issue #36: Documentation and docstring improvements
