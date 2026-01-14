@@ -1,5 +1,22 @@
 import * as Sentry from "@sentry/nextjs";
 
+/**
+ * Initialize Sentry for Node.js server runtime errors.
+ *
+ * This configuration handles error tracking on the server side with comprehensive
+ * privacy protections. All sensitive data (API keys, auth headers, request signatures)
+ * are scrubbed via the beforeSend hook before errors are sent to Sentry.
+ *
+ * Privacy guarantees:
+ * - HMAC-anonymized identifiers (e.g., "token#abc123") are preserved for debugging
+ * - API keys, secrets, and auth credentials are removed
+ * - Request headers containing sensitive data are redacted
+ * - No user PII is sent to Sentry (sendDefaultPii: false)
+ *
+ * Performance:
+ * - 100% trace sampling for full visibility on all API endpoints
+ * - All transactions are captured to identify bottlenecks and errors
+ */
 Sentry.init({
   // DSN is public by design (NEXT_PUBLIC_ prefix).
   // Sentry DSN is meant to be exposed to clients and is not a secret.
@@ -15,7 +32,7 @@ Sentry.init({
   sendDefaultPii: false,
 
   // Data scrubbing for server-side errors
-  beforeSend(event, hint) {
+  beforeSend(event: Sentry.ErrorEvent, hint: Sentry.EventHint): Sentry.ErrorEvent | null {
     // Scrub sensitive environment variables
     if (event.extra) {
       delete event.extra.OPENAI_API_KEY;
