@@ -11,7 +11,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     Sentry.captureException(error);
-  }, [error]);
+  }, [error.digest]); // Only run once per unique error (digest is stable)
 
   return (
     <html lang="en">

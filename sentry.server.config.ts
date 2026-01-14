@@ -1,6 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
+  // DSN is public by design (NEXT_PUBLIC_ prefix).
+  // Sentry DSN is meant to be exposed to clients and is not a secret.
+  // Security is provided by project settings and rate limiting, not by hiding the DSN.
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   environment: process.env.NODE_ENV,
