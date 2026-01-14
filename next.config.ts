@@ -1,8 +1,15 @@
+import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactStrictMode: true,
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Sentry Webpack Plugin Options
+  org: "rustpoint",
+  project: "repkit-app",
+
+  // Only upload source maps in CI (not local dev)
+  silent: !process.env.CI,
+});

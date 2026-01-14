@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ChatCompletion } from "openai/resources/chat/completions";
 import { createHmac } from "crypto";
+import * as Sentry from "@sentry/nextjs";
 import {
   createChatCompletion,
   calculateCost,
@@ -216,6 +217,21 @@ export async function POST(request: NextRequest) {
       error instanceof Error ? error.message : "Unknown error";
     const errorType =
       error instanceof Error ? error.constructor.name : "Unknown";
+
+    // Sentry: Capture exception with sanitized context
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: "/api/ai/chat/mini",
+        model: "gpt-5-mini",
+        error_type: errorType,
+      },
+      extra: {
+        requestId,
+        duration_ms: duration,
+        // DO NOT include: deviceToken, ip, signature
+      },
+      fingerprint: ["api-error", "openai", errorType],
+    });
 
     // Log error details
     console.error("[API Error]", {
