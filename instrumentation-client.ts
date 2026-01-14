@@ -1,5 +1,24 @@
 import * as Sentry from "@sentry/nextjs";
 
+/**
+ * Initialize Sentry for browser client-side errors.
+ *
+ * This configuration tracks client-side errors and performance with privacy-first data scrubbing.
+ * Session replays are captured with text/media masking to prevent sensitive data leakage while
+ * still providing context for debugging UI issues.
+ *
+ * Privacy guarantees:
+ * - Session replays mask all text and block all media files
+ * - Auth headers, device tokens, and request signatures are removed
+ * - User email and IP address are never sent
+ * - Query strings are redacted to prevent sensitive data in URLs
+ * - No user PII is sent to Sentry (sendDefaultPii: false)
+ *
+ * Performance:
+ * - 100% trace sampling for full visibility on client-side operations
+ * - 10% session replay rate for performance efficiency
+ * - 100% session replay rate for error scenarios (100% of sessions with errors recorded)
+ */
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
@@ -15,7 +34,7 @@ Sentry.init({
   sendDefaultPii: false,
 
   // Data scrubbing hook to remove sensitive information
-  beforeSend(event, hint) {
+  beforeSend(event: Sentry.ErrorEvent, hint: Sentry.EventHint): Sentry.ErrorEvent | null {
     // Remove any accidentally captured sensitive headers
     if (event.request?.headers) {
       delete event.request.headers["x-device-token"];
