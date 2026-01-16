@@ -20,6 +20,8 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@bufbuild/protoc-gen-es": "^1.10.1",
+    "@connectrpc/protoc-gen-connect-es": "^1.7.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -33,5 +35,14 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
     "vitest": "^4.0.15"
-  }
+  },
+  "description": "Marketing website and OpenAI API proxy for RepKit - AI-powered fitness tracking.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

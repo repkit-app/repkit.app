@@ -1,0 +1,276 @@
+syntax = "proto3";
+
+package repkit.ai.v1;
+
+// ============================================================================
+// Message Types (formerly messages.proto)
+// ============================================================================
+
+
+/**
+ * Chat message types for OpenAI API
+ * Supports system, user, assistant, and tool roles
+ */
+message ChatMessage {
+  enum Role {
+    ROLE_UNSPECIFIED = 0;
+    ROLE_SYSTEM = 1;
+    ROLE_USER = 2;
+    ROLE_ASSISTANT = 3;
+    ROLE_TOOL = 4;
+  }
+
+  Role role = 1;
+  optional string content = 2;        // Can be null for tool calls
+  optional string name = 3;           // Function name for tool results
+  optional string tool_call_id = 4;   // Required when role is TOOL
+  repeated ToolCall tool_calls = 5;   // For assistant messages with tool calls
+}
+
+/**
+ * Tool call information returned by assistant messages
+ */
+message ToolCall {
+  string id = 1;
+  string type = 2;                    // Always "function"
+  ToolFunction function = 3;
+}
+
+/**
+ * Function definition within a tool call
+ */
+message ToolFunction {
+  string name = 1;
+  string arguments = 2;               // JSON string (OpenAI format)
+}
+
+/**
+ * JSON Schema parameter definition for a tool function
+ * Subset of JSON Schema specification
+ */
+message ToolParameter {
+  string type = 1;                    // "string", "number", "boolean", "array", "object"
+  optional string description = 2;
+  repeated string enum = 3;           // Allowed values for this parameter
+  map<string, string> additional_properties = 4;  // For extensibility
+}
+
+/**
+ * Tool parameter schema (JSON Schema object type)
+ * Defines the parameters object for a tool function
+ */
+message ToolSchema {
+  /**
+   * Property definition for each parameter
+   */
+  message Property {
+    string type = 1;                  // JSON Schema type
+    optional string description = 2;
+    repeated string enum = 3;
+  }
+
+  map<string, Property> properties = 1;   // Required: keys must be in this map
+  repeated string required = 2;           // Which properties are required
+}
+
+/**
+ * Function definition for a tool
+ * Maps to OpenAI's tool.function schema
+ */
+message Tool {
+  string name = 1;
+  string description = 2;
+  optional ToolSchema parameters = 3;
+  bool strict = 4;                    // For structured outputs
+}
+
+/**
+ * Tool choice options
+ * Specifies how the model should use tools
+ */
+message ToolChoice {
+  oneof choice {
+    string string_choice = 1;         // "auto", "none", "required"
+    SpecificTool function = 2;        // Call specific function
+  }
+}
+
+/**
+ * Reference to a specific tool function
+ */
+message SpecificTool {
+  string type = 1;                    // "function"
+  string function_name = 2;           // Name of the tool to call
+}
+
+/**
+ * Request payload for chat completions
+ * Sent to either CreateStandardCompletion or CreateMiniCompletion
+ */
+message CreateChatCompletionRequest {
+  repeated ChatMessage messages = 1;
+  optional double temperature = 2;
+  optional int32 max_tokens = 3;
+  repeated Tool tools = 4;
+  optional ToolChoice tool_choice = 5;
+
+  // Authentication fields (included in proto message, not headers)
+  optional string device_token = 6;
+  optional string timestamp = 7;
+  optional string signature = 8;
+}
+
+/**
+ * Chat completion response from OpenAI
+ */
+message ChatCompletionResponse {
+  string id = 1;
+  string model = 2;
+  repeated Choice choices = 3;
+  Usage usage = 4;
+  string created = 5;                 // Unix timestamp as string
+  string object = 6;                  // "chat.completion"
+}
+
+/**
+ * Single completion choice in response
+ */
+message Choice {
+  int32 index = 1;
+  Message message = 2;
+  string finish_reason = 3;           // "stop", "tool_calls", etc.
+}
+
+/**
+ * Message in a completion choice
+ */
+message Message {
+  string role = 1;                    // "assistant"
+  optional string content = 2;
+  repeated ToolCall tool_calls = 3;   // If model called tools
+}
+
+/**
+ * Token usage information
+ */
+message Usage {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+  int32 total_tokens = 3;
+  optional PromptTokenDetails prompt_tokens_details = 4;
+}
+
+/**
+ * Detailed prompt token information
+ * Includes cached tokens for cost calculation
+ */
+message PromptTokenDetails {
+  int32 cached_tokens = 1;
+}
+
+/**
+ * Server-streaming chunk for real-time responses
+ * Multiple of these are sent for StreamStandardCompletion
+ */
+message ChatCompletionChunk {
+  string id = 1;
+  string model = 2;
+  repeated DeltaChoice choices = 3;
+  string created = 4;                 // Unix timestamp as string
+  string object = 5;                  // "chat.completion.chunk"
+}
+
+/**
+ * Delta choice in a streaming chunk
+ */
+message DeltaChoice {
+  int32 index = 1;
+  Delta delta = 2;
+  optional string finish_reason = 3;  // null until stream ends
+}
+
+/**
+ * Delta (incremental change) in a streaming response
+ */
+message Delta {
+  optional string content = 1;        // Null until content arrives
+  repeated ToolCall tool_calls = 2;   // Null until tool calls arrive
+  optional string role = 3;           // Only in first chunk ("assistant")
+}
+
+/**
+ * ChatService provides AI-powered chat completion endpoints
+ * with support for tool calling and real-time streaming.
+ *
+ * All requests require HMAC authentication (signature + timestamp in message).
+ * Rate limiting applies: 100 req/hour with device token, 50 req/hour by IP.
+ */
+service ChatService {
+  /**
+   * CreateStandardCompletion generates a response using gpt-5.2
+   *
+   * Suitable for:
+   * - Complex reasoning tasks
+   * - Tool calling and agentic behavior
+   * - Training program generation
+   *
+   * Request:
+   *   messages: Chat history with system/user/assistant/tool messages
+   *   temperature: Controls randomness (0-2, default 0.7)
+   *   max_tokens: Max completion tokens (default 2000)
+   *   tools: Available tools for the model to call
+   *   tool_choice: How to use tools (auto, none, required, or specific)
+   *
+   * Response:
+   *   Single ChatCompletionResponse with model output
+   *
+   * Errors:
+   *   UNAUTHENTICATED: Invalid or missing HMAC signature
+   *   RESOURCE_EXHAUSTED: Rate limit exceeded
+   *   INVALID_ARGUMENT: Tool schema validation failed
+   */
+  rpc CreateStandardCompletion(CreateChatCompletionRequest)
+    returns (ChatCompletionResponse) {}
+
+  /**
+   * CreateMiniCompletion generates a response using gpt-4o-mini
+   *
+   * Suitable for:
+   * - Fast, lightweight responses
+   * - Cost-effective queries
+   * - Simple classification tasks
+   *
+   * Request/Response: Same as CreateStandardCompletion
+   * Difference: Uses lower-cost model with lower latency
+   */
+  rpc CreateMiniCompletion(CreateChatCompletionRequest)
+    returns (ChatCompletionResponse) {}
+
+  /**
+   * StreamStandardCompletion streams a response using gpt-5.2
+   *
+   * Suitable for:
+   * - Long-form generation (essays, programs, training plans)
+   * - Real-time UI updates
+   * - Progressive rendering
+   *
+   * Request: Same as CreateStandardCompletion
+   * Response: Stream of ChatCompletionChunk messages
+   *   - Multiple chunks arrive incrementally
+   *   - Each chunk contains a delta (partial content/tools)
+   *   - Stream ends when OpenAI response completes
+   *
+   * Implementation:
+   *   - HTTP/2 required for streaming
+   *   - Each chunk is framed with 5-byte prefix (flags + length)
+   *   - Client consumes chunks via AsyncIterator
+   *
+   * Errors:
+   *   UNAUTHENTICATED: Invalid or missing HMAC signature
+   *   RESOURCE_EXHAUSTED: Rate limit exceeded
+   *   INVALID_ARGUMENT: Tool schema validation failed
+   *   DEADLINE_EXCEEDED: Request timeout (>30s)
+   */
+  rpc StreamStandardCompletion(CreateChatCompletionRequest)
+    returns (stream ChatCompletionChunk) {}
+}
