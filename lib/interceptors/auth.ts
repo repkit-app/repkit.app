@@ -1,0 +1,153 @@
+/**
+ * Authentication Interceptor
+ * Validates HMAC signature and timestamp on all Connect RPC requests
+ */
+
+import { createHmac } from 'crypto';
+import type { Interceptor } from '@connectrpc/connect';
+import { Code, ConnectError } from '@connectrpc/connect';
+
+/**
+ * Anonymize PII for logging using HMAC
+ * Prevents offline reversal of hashed values from leaked logs
+ */
+function anonymize(value: string): string {
+  const key = process.env.LOG_HASH_KEY || 'change-me-in-prod';
+  return value
+    ? createHmac('sha256', key).update(value).digest('hex').slice(0, 12)
+    : 'unknown';
+}
+
+/**
+ * Authentication Interceptor
+ * Validates HMAC-SHA256 signature and timestamp to prevent unauthorized access
+ *
+ * Signature validation:
+ * - Extracts signature and timestamp from request message
+ * - Computes HMAC-SHA256(payload + timestamp) using HMAC_SECRET
+ * - Compares with provided signature
+ *
+ * Timestamp validation:
+ * - Prevents replay attacks by enforcing 5-minute window
+ * - Request timestamp must be within ±5 minutes of server time
+ *
+ * Error handling:
+ * - Returns UNAUTHENTICATED (401) if validation fails
+ * - Does NOT forward to handlers if auth fails
+ * - Logs anonymized identifiers for security monitoring
+ */
+export const authInterceptor: Interceptor = (next) => {
+  return async (req) => {
+    // Only apply auth to unary requests (not streaming)
+    if (req.stream) {
+      // Streaming requests not yet implemented
+      throw new ConnectError(
+        'Streaming not yet implemented',
+        Code.Unimplemented
+      );
+    }
+
+    // Extract auth fields from request message
+    // These are included in the proto message, not in HTTP headers
+    const msg = req.message;
+    const signature = (msg as any).signature;
+    const timestamp = (msg as any).timestamp;
+    const deviceToken = (msg as any).deviceToken;
+
+    // Validate fields exist
+    if (!signature || !timestamp) {
+      console.warn('[Auth] Missing authentication fields', {
+        method: req.method.name,
+        url: req.url,
+      });
+
+      throw new ConnectError(
+        'Authentication required: missing signature or timestamp',
+        Code.Unauthenticated
+      );
+    }
+
+    // Validate timestamp is recent (within 5 minutes)
+    const requestTime = parseInt(timestamp, 10);
+    const serverTime = Date.now();
+    const timeDiffMs = Math.abs(serverTime - requestTime);
+    const fiveMinutesMs = 5 * 60 * 1000;
+
+    if (timeDiffMs > fiveMinutesMs) {
+      console.warn('[Auth] Timestamp validation failed', {
+        method: req.method.name,
+        identifier: deviceToken
+          ? `token#${anonymize(deviceToken)}`
+          : 'unknown',
+        timeDiffSeconds: (timeDiffMs / 1000).toFixed(1),
+      });
+
+      throw new ConnectError(
+        `Authentication failed: request timestamp outside valid window (${(timeDiffMs / 1000).toFixed(1)}s old)`,
+        Code.Unauthenticated
+      );
+    }
+
+    // Validate HMAC signature
+    // The signature is computed over: message bytes + timestamp
+    const secret = process.env.HMAC_SECRET || 'change-me-in-prod';
+
+    try {
+      // Serialize message to JSON for signature validation
+      // This matches what the client uses for signing
+      const messageJson = JSON.stringify({
+        messages: msg.messages,
+        tools: msg.tools,
+        temperature: msg.temperature,
+        maxTokens: msg.maxTokens,
+        toolChoice: msg.toolChoice,
+        deviceToken: msg.deviceToken,
+      });
+
+      const payload = Buffer.concat([
+        Buffer.from(messageJson, 'utf-8'),
+        Buffer.from(timestamp, 'utf-8'),
+      ]);
+
+      const expectedSignature = createHmac('sha256', secret)
+        .update(payload)
+        .digest('hex');
+
+      if (signature !== expectedSignature) {
+        const identifier = deviceToken
+          ? `token#${anonymize(deviceToken)}`
+          : 'unknown';
+
+        console.warn('[Auth] Signature validation failed', {
+          method: req.method.name,
+          identifier,
+        });
+
+        throw new ConnectError(
+          'Authentication failed: invalid signature',
+          Code.Unauthenticated
+        );
+      }
+
+      // Signature valid - store auth info on request for logging interceptor
+      (req as any)._authenticated = true;
+      (req as any)._deviceToken = deviceToken;
+
+      // Forward request to next handler
+      return await next(req);
+    } catch (error) {
+      if (error instanceof ConnectError) {
+        throw error;
+      }
+
+      console.error('[Auth] Unexpected error during signature validation', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+
+      throw new ConnectError(
+        'Authentication error',
+        Code.Internal
+      );
+    }
+  };
+};
