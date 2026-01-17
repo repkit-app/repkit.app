@@ -107,6 +107,89 @@ function openAIToProtoResponse(
 }
 
 /**
+ * Shared request handler logic
+ * Reduces duplication between createStandardCompletion and createMiniCompletion
+ */
+async function handleChatCompletionRequest(
+  req: CreateChatCompletionRequest,
+  defaultModel: 'gpt-5.2' | 'gpt-4o-mini'
+): Promise<ChatCompletionResponse> {
+  // Validate input
+  if (!req.messages || req.messages.length === 0) {
+    throw new ConnectError(
+      'Messages array is required and cannot be empty',
+      Code.InvalidArgument
+    );
+  }
+
+  // Validate tool schemas
+  if (req.tools && req.tools.length > 0) {
+    const toolErrors = validateTools(req.tools);
+    if (toolErrors.length > 0) {
+      throw new ConnectError(
+        `Invalid tool schema: ${toolErrors.join('; ')}`,
+        Code.InvalidArgument
+      );
+    }
+  }
+
+  try {
+    // Determine model to use (client can override via req.model)
+    const model = req.model || defaultModel;
+
+    // Convert proto messages to OpenAI format
+    const openaiMessages = req.messages.map(protoToOpenAIMessage);
+
+    // Convert proto tools to OpenAI format
+    // TODO: Fix #3 - Replace any cast with proper typed definition
+    const openaiTools = req.tools?.map((tool) => ({
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters
+          ? {
+              type: 'object' as const,
+              properties: tool.parameters.properties || {},
+              required: tool.parameters.required || [],
+            }
+          : { type: 'object' as const, properties: {} },
+        strict: tool.strict || false,
+      },
+    })) as any;
+
+    // Call OpenAI with configurable model
+    const completion = await createChatCompletion(model, {
+      messages: openaiMessages,
+      temperature: req.temperature ?? 0.7,
+      max_tokens: req.maxTokens ?? 2000,
+      tools: openaiTools,
+      tool_choice: req.toolChoice as any,
+    });
+
+    // Convert response to proto format
+    return openAIToProtoResponse(completion);
+  } catch (error) {
+    // Handle OpenAI errors
+    if (error instanceof Error && (error as any).status !== undefined) {
+      const status = (error as any).status;
+      const message = error.message;
+
+      throw new ConnectError(
+        message,
+        status === 429
+          ? Code.ResourceExhausted
+          : status >= 500
+            ? Code.Internal
+            : Code.InvalidArgument
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
  * ChatService Handler Registration
  */
 export default function registerChatServiceHandlers(router: ConnectRouter) {
@@ -114,138 +197,14 @@ export default function registerChatServiceHandlers(router: ConnectRouter) {
     async createStandardCompletion(
       req: CreateChatCompletionRequest
     ): Promise<ChatCompletionResponse> {
-      // Validate input
-      if (!req.messages || req.messages.length === 0) {
-        throw new ConnectError(
-          'Messages array is required and cannot be empty',
-          Code.InvalidArgument
-        );
-      }
-
-      // Validate tool schemas
-      if (req.tools && req.tools.length > 0) {
-        const toolErrors = validateTools(req.tools);
-        if (toolErrors.length > 0) {
-          throw new ConnectError(
-            `Invalid tool schema: ${toolErrors.join('; ')}`,
-            Code.InvalidArgument
-          );
-        }
-      }
-
-      try {
-        // Convert proto messages to OpenAI format
-        const openaiMessages = req.messages.map(protoToOpenAIMessage);
-
-        // Convert proto tools to OpenAI format with type casting
-        // Note: TypeScript can't statically verify the properties match,
-        // so we cast to any for the parameters property
-        const openaiTools = req.tools?.map((tool) => ({
-          type: 'function' as const,
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters
-              ? {
-                  type: 'object' as const,
-                  properties: tool.parameters.properties || {},
-                  required: tool.parameters.required || [],
-                }
-              : { type: 'object' as const, properties: {} },
-            strict: tool.strict || false,
-          },
-        })) as any;
-
-        // Call OpenAI
-        const completion = await createChatCompletion('gpt-5.2', {
-          messages: openaiMessages,
-          temperature: req.temperature ?? 0.7,
-          max_tokens: req.maxTokens ?? 2000,
-          tools: openaiTools,
-          tool_choice: req.toolChoice as any,
-        });
-
-        // Convert response to proto format
-        return openAIToProtoResponse(completion);
-      } catch (error) {
-        // Handle OpenAI errors
-        if (error instanceof Error && (error as any).status !== undefined) {
-          const status = (error as any).status;
-          const message = error.message;
-
-          throw new ConnectError(
-            message,
-            status === 429
-              ? Code.ResourceExhausted
-              : status >= 500
-                ? Code.Internal
-                : Code.InvalidArgument
-          );
-        }
-
-        throw error;
-      }
+      return handleChatCompletionRequest(req, 'gpt-5.2');
     },
 
     async createMiniCompletion(
       req: CreateChatCompletionRequest
     ): Promise<ChatCompletionResponse> {
-      // Validate input
-      if (!req.messages || req.messages.length === 0) {
-        throw new ConnectError(
-          'Messages array is required and cannot be empty',
-          Code.InvalidArgument
-        );
-      }
-
-      // Validate tool schemas
-      if (req.tools && req.tools.length > 0) {
-        const toolErrors = validateTools(req.tools);
-        if (toolErrors.length > 0) {
-          throw new ConnectError(
-            `Invalid tool schema: ${toolErrors.join('; ')}`,
-            Code.InvalidArgument
-          );
-        }
-      }
-
-      try {
-        // Convert proto messages to OpenAI format
-        const openaiMessages = req.messages.map(protoToOpenAIMessage);
-
-        // Convert proto tools to OpenAI format
-        const openaiTools = req.tools?.map((tool) => ({
-          type: 'function' as const,
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters
-              ? {
-                  type: 'object' as const,
-                  properties: tool.parameters.properties || {},
-                  required: tool.parameters.required || [],
-                }
-              : { type: 'object' as const, properties: {} },
-            strict: tool.strict || false,
-          },
-        })) as any;
-
-        // Call OpenAI
-        const completion = await createChatCompletion('gpt-4o-mini', {
-          messages: openaiMessages,
-          temperature: req.temperature ?? 0.7,
-          max_tokens: req.maxTokens ?? 2000,
-          tools: openaiTools,
-          tool_choice: req.toolChoice as any,
-        });
-
-        // Convert response to proto format
-        return openAIToProtoResponse(completion);
-      } catch (error) {
-        // Handle OpenAI errors
-        if (error instanceof Error && (error as any).status !== undefined) {
-          const status = (error as any).status;
-          const message = error.message;
+      return handleChatCompletionRequest(req, 'gpt-4o-mini');
+    },
 
           throw new ConnectError(
             message,
