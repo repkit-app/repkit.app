@@ -186,6 +186,34 @@ export interface ChatCompletionRequest {
 }
 
 /**
+ * Build model-specific request parameters for OpenAI API
+ *
+ * gpt-5-* models:
+ * - Require: max_completion_tokens (not max_tokens)
+ * - Require: no custom temperature (only supports default=1)
+ *
+ * gpt-4o* models:
+ * - Require: max_tokens
+ * - Support: custom temperature
+ */
+function buildModelSpecificParams(
+  model: string,
+  request: ChatCompletionRequest,
+  tokenLimit: number
+): Record<string, unknown> {
+  const isGpt5 = model.startsWith("gpt-5");
+
+  return {
+    ...(isGpt5
+      ? { max_completion_tokens: tokenLimit }
+      : {
+          max_tokens: tokenLimit,
+          temperature: request.temperature ?? 0.7,
+        }),
+  };
+}
+
+/**
  * Create a chat completion using the specified model
  *
  * Note: gpt-5-* models require max_completion_tokens instead of max_tokens.
@@ -201,9 +229,6 @@ export async function createChatCompletion(
 ): Promise<Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>> {
   return withRetry(async () => {
     const client = getOpenAIClient();
-
-    // gpt-5-* models use max_completion_tokens, older models use max_tokens
-    const isGpt5 = model.startsWith("gpt-5");
     const tokenLimit = request.max_tokens ?? 2000;
 
     try {
@@ -212,10 +237,7 @@ export async function createChatCompletion(
         messages: request.messages as Parameters<
           typeof client.chat.completions.create
         >[0]["messages"],
-        temperature: request.temperature ?? 0.7,
-        ...(isGpt5
-          ? { max_completion_tokens: tokenLimit }
-          : { max_tokens: tokenLimit }),
+        ...buildModelSpecificParams(model, request, tokenLimit),
         stream: false,
         ...(request.tools && { tools: request.tools }),
         ...(request.tool_choice && { tool_choice: request.tool_choice }),
@@ -264,9 +286,6 @@ export async function* createChatCompletionStream(
   // Retry only applies to initial stream creation, not chunk delivery
   const stream = await withRetry(async () => {
     const client = getOpenAIClient();
-
-    // gpt-5-* models use max_completion_tokens, older models use max_tokens
-    const isGpt5 = model.startsWith("gpt-5");
     const tokenLimit = request.max_tokens ?? 2000;
 
     try {
@@ -275,10 +294,7 @@ export async function* createChatCompletionStream(
         messages: request.messages as Parameters<
           typeof client.chat.completions.create
         >[0]["messages"],
-        temperature: request.temperature ?? 0.7,
-        ...(isGpt5
-          ? { max_completion_tokens: tokenLimit }
-          : { max_tokens: tokenLimit }),
+        ...buildModelSpecificParams(model, request, tokenLimit),
         stream: true,
         ...(request.tools && { tools: request.tools }),
         ...(request.tool_choice && { tool_choice: request.tool_choice }),
