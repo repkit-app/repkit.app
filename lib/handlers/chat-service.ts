@@ -28,6 +28,10 @@ import { validateTools } from '@/lib/validators/tool';
 import {
   type OpenAITool,
   type OpenAIToolChoice,
+  type OpenAIChatCompletionChoice,
+  type OpenAIChatCompletionResponse,
+  type OpenAIChatCompletionChunk,
+  type OpenAIUsageDetails,
   isErrorWithStatus,
   hasIdField,
 } from '@/lib/types/openai-api';
@@ -118,44 +122,6 @@ function protoToOpenAIMessage(msg: ProtoMessage): OpenAIMessage {
       },
     })),
   };
-}
-
-/**
- * Typed representation of OpenAI chat completion response
- */
-interface OpenAIChatCompletionChoice {
-  index: number;
-  message: {
-    content: string;
-    tool_calls?: Array<{
-      id: string;
-      type: 'function';
-      function: {
-        name: string;
-        arguments: string;
-      };
-    }>;
-  };
-  finish_reason: string | null;
-}
-
-interface OpenAIUsageDetails {
-  prompt_tokens_details?: {
-    cached_tokens?: number;
-  };
-}
-
-interface OpenAIChatCompletionResponse {
-  id: string;
-  model: string;
-  created: number;
-  object: string;
-  choices: OpenAIChatCompletionChoice[];
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  } & OpenAIUsageDetails;
 }
 
 /**

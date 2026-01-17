@@ -4,16 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run buf:generate && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "test:hmac": "node scripts/dev/test-hmac.js"
+    "test:hmac": "node scripts/dev/test-hmac.js",
+    "buf:generate": "buf generate"
   },
   "dependencies": {
-    "@connectrpc/connect": "^2.1.0",
-    "@connectrpc/connect-next": "^2.1.0",
+    "@connectrpc/connect": "^1.7.0",
+    "@connectrpc/connect-next": "^1.7.0",
     "@sentry/nextjs": "^10.33.0",
     "@upstash/redis": "^1.35.7",
     "next": "^15.1.0",
