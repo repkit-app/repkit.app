@@ -162,6 +162,65 @@ export async function createChatCompletion(
 }
 
 /**
+ * Create a streaming chat completion using the specified model
+ *
+ * Returns an AsyncIterable that yields ChatCompletionChunk messages as they
+ * arrive from the OpenAI API. Use in an async generator to stream responses.
+ *
+ * Note: gpt-5-* models require max_completion_tokens instead of max_tokens.
+ */
+export async function* createChatCompletionStream(
+  model: "gpt-4o-mini" | "gpt-4o" | "gpt-5-mini" | "gpt-5.2",
+  request: ChatCompletionRequest
+): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk> {
+  const client = getOpenAIClient();
+
+  // gpt-5-* models use max_completion_tokens, older models use max_tokens
+  const isGpt5 = model.startsWith("gpt-5");
+  const tokenLimit = request.max_tokens ?? 2000;
+
+  try {
+    const stream = await client.chat.completions.create({
+      model,
+      messages: request.messages as Parameters<
+        typeof client.chat.completions.create
+      >[0]["messages"],
+      temperature: request.temperature ?? 0.7,
+      ...(isGpt5
+        ? { max_completion_tokens: tokenLimit }
+        : { max_tokens: tokenLimit }),
+      stream: true,
+      ...(request.tools && { tools: request.tools }),
+      ...(request.tool_choice && { tool_choice: request.tool_choice }),
+    });
+
+    // Yield each chunk as it arrives
+    for await (const chunk of stream) {
+      yield chunk;
+    }
+  } catch (error: unknown) {
+    // Sentry: Report OpenAI API errors
+    const Sentry = await import("@sentry/nextjs");
+
+    Sentry.captureException(error, {
+      tags: {
+        service: "openai",
+        model,
+        stream: true,
+      },
+      extra: {
+        message_count: request.messages.length,
+        has_tools: Boolean(request.tools),
+        // DO NOT include message content or tool definitions
+      },
+    });
+
+    // Re-throw to let handler deal with the error
+    throw error;
+  }
+}
+
+/**
  * Official OpenAI pricing (per 1M tokens)
  * Updated: December 2025
  * Source: https://openai.com/api/pricing/

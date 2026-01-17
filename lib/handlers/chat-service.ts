@@ -21,6 +21,7 @@ import {
 } from '@/lib/generated/proto/repkit/ai/v1/api_pb';
 import {
   createChatCompletion,
+  createChatCompletionStream,
   type ChatMessage as OpenAIMessage,
 } from '@/lib/openai';
 import { validateTools } from '@/lib/validators/tool';
@@ -300,92 +301,70 @@ export default function registerChatServiceHandlers(router: ConnectRouter) {
       }
 
       try {
+        // Determine model to use (client can override via req.model)
+        const model = req.model || 'gpt-5.2';
+
         // Convert proto messages to OpenAI format
         const openaiMessages = req.messages.map(protoToOpenAIMessage);
 
-        // Convert proto tools to OpenAI format
-        const openaiTools = req.tools?.map((tool) => ({
-          type: 'function' as const,
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters
-              ? {
-                  type: 'object' as const,
-                  properties: tool.parameters.properties || {},
-                  required: tool.parameters.required || [],
-                }
-              : { type: 'object' as const, properties: {} },
-            strict: tool.strict || false,
-          },
-        })) as any;
+        // Convert proto tools to properly typed OpenAI format
+        const openaiTools = req.tools?.map(protoToOpenAITool);
 
-        // Note: Streaming not fully implemented in createChatCompletion yet
-        // This is a placeholder that will work once streaming is added
-        const completion = await createChatCompletion('gpt-5.2', {
+        // Convert proto tool choice to OpenAI format
+        const openaiToolChoice = protoToOpenAIToolChoice(req.toolChoice);
+
+        // Call OpenAI with streaming
+        const stream = createChatCompletionStream(model, {
           messages: openaiMessages,
           temperature: req.temperature ?? 0.7,
           max_tokens: req.maxTokens ?? 2000,
           tools: openaiTools,
-          tool_choice: req.toolChoice as any,
+          tool_choice: openaiToolChoice,
         });
 
-        // For now, treat non-streaming response as single chunk
-        // TODO: Once streaming is implemented, iterate over chunks
-        if (!('id' in completion)) {
-          // It's a stream, iterate over it
-          // const stream = completion as AsyncIterable<any>;
-          // for await (const chunk of stream) {
-          //   yield convertChunk(chunk);
-          // }
-          throw new ConnectError(
-            'Streaming not yet implemented',
-            Code.Internal
-          );
+        // Iterate over stream and convert chunks to proto format
+        for await (const openaiChunk of stream) {
+          const chunk = new ChatCompletionChunk({
+            id: openaiChunk.id,
+            model: openaiChunk.model,
+            created: openaiChunk.created.toString(),
+            object: 'chat.completion.chunk',
+          });
+
+          if (openaiChunk.choices && openaiChunk.choices.length > 0) {
+            chunk.choices = openaiChunk.choices.map((choice) => {
+              const deltaContent = choice.delta?.content || '';
+              const deltaToolCalls = choice.delta?.tool_calls?.map((tc) => ({
+                id: tc.id,
+                type: 'function' as const,
+                function: {
+                  name: tc.function?.name || '',
+                  arguments: tc.function?.arguments || '',
+                },
+              })) || [];
+
+              return new DeltaChoice({
+                index: choice.index,
+                finishReason: choice.finish_reason || '',
+                delta: new Delta({
+                  role: 'assistant',
+                  content: deltaContent,
+                  toolCalls: deltaToolCalls.length > 0 ? deltaToolCalls : undefined,
+                }),
+              });
+            });
+          }
+
+          yield chunk;
         }
-
-        // Convert to streaming response format
-        const chunk = new ChatCompletionChunk({
-          id: completion.id,
-          model: completion.model,
-          created: completion.created.toString(),
-          object: 'chat.completion.chunk',
-        });
-
-        if (completion.choices && completion.choices.length > 0) {
-          const choice = completion.choices[0] as any;
-          chunk.choices = [
-            new DeltaChoice({
-              index: 0,
-              finishReason: choice.finish_reason || 'stop',
-              delta: new Delta({
-                role: 'assistant',
-                content: choice.message?.content || '',
-                toolCalls: choice.message?.tool_calls?.map((tc: any) => ({
-                  id: tc.id,
-                  type: 'function' as const,
-                  function: {
-                    name: tc.function.name,
-                    arguments: tc.function.arguments,
-                  },
-                })),
-              }),
-            }),
-          ];
-        }
-
-        yield chunk;
       } catch (error) {
-        // Handle OpenAI errors
-        if (error instanceof Error && (error as any).status !== undefined) {
-          const status = (error as any).status;
-          const message = error.message;
-
+        // Handle OpenAI errors with proper type checking
+        if (isErrorWithStatus(error)) {
           throw new ConnectError(
-            message,
-            status === 429
+            error.message,
+            error.status === 429
               ? Code.ResourceExhausted
-              : status >= 500
+              : error.status >= 500
                 ? Code.Internal
                 : Code.InvalidArgument
           );
