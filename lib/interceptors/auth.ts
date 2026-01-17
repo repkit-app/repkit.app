@@ -28,15 +28,6 @@ import { anonymize } from '@/lib/utils/anonymize';
  */
 export const authInterceptor: Interceptor = (next) => {
   return async (req) => {
-    // Only apply auth to unary requests (not streaming)
-    if (req.stream) {
-      // Streaming requests not yet implemented
-      throw new ConnectError(
-        'Streaming not yet implemented',
-        Code.Unimplemented
-      );
-    }
-
     // Extract auth fields from request message
     // These are included in the proto message, not in HTTP headers
     const msg = req.message;

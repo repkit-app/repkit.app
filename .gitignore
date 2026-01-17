@@ -50,7 +50,6 @@ next-env.d.ts
 *~
 worktrees/
 .claude-cache/
-.claude-cache/
 
-# generated code
-lib/generated/
+# generated protobuf code
+lib/generated/proto/

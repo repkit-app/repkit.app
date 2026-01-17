@@ -121,50 +121,80 @@ function protoToOpenAIMessage(msg: ProtoMessage): OpenAIMessage {
 }
 
 /**
+ * Typed representation of OpenAI chat completion response
+ */
+interface OpenAIChatCompletionChoice {
+  index: number;
+  message: {
+    content: string;
+    tool_calls?: Array<{
+      id: string;
+      type: 'function';
+      function: {
+        name: string;
+        arguments: string;
+      };
+    }>;
+  };
+  finish_reason: string | null;
+}
+
+interface OpenAIUsageDetails {
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+}
+
+interface OpenAIChatCompletionResponse {
+  id: string;
+  model: string;
+  created: number;
+  object: string;
+  choices: OpenAIChatCompletionChoice[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  } & OpenAIUsageDetails;
+}
+
+/**
  * Convert OpenAI response to proto ChatCompletionResponse
  */
 function openAIToProtoResponse(
   response: Awaited<ReturnType<typeof createChatCompletion>>
 ): ChatCompletionResponse {
-  // Handle both direct responses and wrapped responses from OpenAI API
-  const completion = hasIdField(response)
-    ? response
-    : hasIdField((response as Record<string, unknown>).message)
-      ? ((response as Record<string, unknown>).message as Record<string, unknown>)
-      : response;
+  // Type assert the response with our known structure
+  const completion = response as unknown as OpenAIChatCompletionResponse;
 
   const protoResponse = new ChatCompletionResponse({
-    id: String(completion.id ?? ''),
-    model: String(completion.model ?? ''),
-    created: String(completion.created ?? ''),
-    object: String(completion.object ?? 'chat.completion'),
+    id: completion.id,
+    model: completion.model,
+    created: completion.created.toString(),
+    object: completion.object,
   });
 
-  const choices = (completion as Record<string, unknown>).choices;
-  if (Array.isArray(choices) && choices.length > 0) {
-    protoResponse.choices = choices.map(
-      (choice: unknown, index: number) => ({
-        index,
-        finishReason: choice.finish_reason || '',
-        message: {
-          role: 'assistant' as const,
-          content: choice.message?.content || '',
-          toolCalls: choice.message?.tool_calls?.map((tc: any) => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: {
-              name: tc.function.name,
-              arguments: tc.function.arguments,
-            },
-          })),
-        },
-      })
-    );
+  if (completion.choices && completion.choices.length > 0) {
+    protoResponse.choices = completion.choices.map((choice) => ({
+      index: choice.index,
+      finishReason: choice.finish_reason || '',
+      message: {
+        role: 'assistant' as const,
+        content: choice.message.content,
+        toolCalls: choice.message.tool_calls?.map((tc) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          },
+        })),
+      },
+    }));
   }
 
   if (completion.usage) {
-    const cachedTokens =
-      (completion.usage as any).prompt_tokens_details?.cached_tokens || 0;
+    const cachedTokens = completion.usage.prompt_tokens_details?.cached_tokens || 0;
 
     protoResponse.usage = new Usage({
       promptTokens: completion.usage.prompt_tokens,
@@ -180,13 +210,16 @@ function openAIToProtoResponse(
 }
 
 /**
- * Shared request handler logic
- * Reduces duplication between createStandardCompletion and createMiniCompletion
+ * Validate and convert request for both unary and streaming handlers
+ * Reduces duplication between handlers
  */
-async function handleChatCompletionRequest(
-  req: CreateChatCompletionRequest,
-  defaultModel: 'gpt-5.2' | 'gpt-4o-mini'
-): Promise<ChatCompletionResponse> {
+interface ValidatedRequest {
+  messages: OpenAIMessage[];
+  tools?: OpenAITool[];
+  toolChoice?: OpenAIToolChoice;
+}
+
+function validateAndConvertRequest(req: CreateChatCompletionRequest): ValidatedRequest {
   // Validate input
   if (!req.messages || req.messages.length === 0) {
     throw new ConnectError(
@@ -206,26 +239,35 @@ async function handleChatCompletionRequest(
     }
   }
 
+  return {
+    messages: req.messages.map(protoToOpenAIMessage),
+    tools: req.tools?.map(protoToOpenAITool),
+    toolChoice: protoToOpenAIToolChoice(req.toolChoice),
+  };
+}
+
+/**
+ * Shared request handler logic
+ * Reduces duplication between createStandardCompletion and createMiniCompletion
+ */
+async function handleChatCompletionRequest(
+  req: CreateChatCompletionRequest,
+  defaultModel: 'gpt-5.2' | 'gpt-4o-mini'
+): Promise<ChatCompletionResponse> {
   try {
+    // Validate and convert request
+    const validated = validateAndConvertRequest(req);
+
     // Determine model to use (client can override via req.model)
     const model = req.model || defaultModel;
 
-    // Convert proto messages to OpenAI format
-    const openaiMessages = req.messages.map(protoToOpenAIMessage);
-
-    // Convert proto tools to properly typed OpenAI format
-    const openaiTools = req.tools?.map(protoToOpenAITool);
-
-    // Convert proto tool choice to OpenAI format
-    const openaiToolChoice = protoToOpenAIToolChoice(req.toolChoice);
-
     // Call OpenAI with configurable model
     const completion = await createChatCompletion(model, {
-      messages: openaiMessages,
+      messages: validated.messages,
       temperature: req.temperature ?? 0.7,
       max_tokens: req.maxTokens ?? 2000,
-      tools: openaiTools,
-      tool_choice: openaiToolChoice,
+      tools: validated.tools,
+      tool_choice: validated.toolChoice,
     });
 
     // Convert response to proto format
@@ -281,45 +323,20 @@ export default function registerChatServiceHandlers(router: ConnectRouter) {
     async *streamStandardCompletion(
       req: CreateChatCompletionRequest
     ): AsyncGenerator<ChatCompletionChunk> {
-      // Validate input
-      if (!req.messages || req.messages.length === 0) {
-        throw new ConnectError(
-          'Messages array is required and cannot be empty',
-          Code.InvalidArgument
-        );
-      }
-
-      // Validate tool schemas
-      if (req.tools && req.tools.length > 0) {
-        const toolErrors = validateTools(req.tools);
-        if (toolErrors.length > 0) {
-          throw new ConnectError(
-            `Invalid tool schema: ${toolErrors.join('; ')}`,
-            Code.InvalidArgument
-          );
-        }
-      }
-
       try {
+        // Validate and convert request (shared with unary handlers)
+        const validated = validateAndConvertRequest(req);
+
         // Determine model to use (client can override via req.model)
         const model = req.model || 'gpt-5.2';
 
-        // Convert proto messages to OpenAI format
-        const openaiMessages = req.messages.map(protoToOpenAIMessage);
-
-        // Convert proto tools to properly typed OpenAI format
-        const openaiTools = req.tools?.map(protoToOpenAITool);
-
-        // Convert proto tool choice to OpenAI format
-        const openaiToolChoice = protoToOpenAIToolChoice(req.toolChoice);
-
         // Call OpenAI with streaming
         const stream = createChatCompletionStream(model, {
-          messages: openaiMessages,
+          messages: validated.messages,
           temperature: req.temperature ?? 0.7,
           max_tokens: req.maxTokens ?? 2000,
-          tools: openaiTools,
-          tool_choice: openaiToolChoice,
+          tools: validated.tools,
+          tool_choice: validated.toolChoice,
         });
 
         // Iterate over stream and convert chunks to proto format

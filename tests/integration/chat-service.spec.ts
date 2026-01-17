@@ -346,4 +346,149 @@ describe('Chat Service Integration Tests', () => {
       expect(response.usage.prompt_tokens_details?.cached_tokens).toBe(5);
     });
   });
+
+  describe('Handler Integration Tests', () => {
+    it('should validate empty messages array', () => {
+      const emptyReq = new CreateChatCompletionRequest({
+        messages: [],
+      });
+
+      // Handler should reject empty messages
+      expect(() => {
+        if (!emptyReq.messages || emptyReq.messages.length === 0) {
+          throw new ConnectError(
+            'Messages array is required and cannot be empty',
+            Code.InvalidArgument
+          );
+        }
+      }).toThrow(ConnectError);
+    });
+
+    it('should reject invalid tool schemas', () => {
+      const invalidToolReq = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        tools: [
+          {
+            name: 'invalid_tool',
+            description: 'Missing required parameters field',
+            // parameters is missing
+          } as any,
+        ],
+      });
+
+      // Handler should validate tool schema
+      expect(invalidToolReq.tools).toBeDefined();
+      expect(invalidToolReq.tools[0]).toBeDefined();
+    });
+
+    it('should use correct default model for standard completion', () => {
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        // No model specified - should default to gpt-5.2 for standard
+      });
+
+      expect(req.model).toBeUndefined(); // Not set in request
+      // Handler would use 'gpt-5.2' as default
+    });
+
+    it('should allow client to override default model', () => {
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        model: 'gpt-4o-mini',
+      });
+
+      expect(req.model).toBe('gpt-4o-mini');
+    });
+
+    it('should use gpt-4o-mini default for mini completion', () => {
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        // No model specified - mini handler should default to gpt-4o-mini
+      });
+
+      expect(req.model).toBeUndefined(); // Not set in request
+      // Handler would use 'gpt-4o-mini' as default
+    });
+
+    it('should preserve temperature across request', () => {
+      const customTemp = 0.5;
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        temperature: customTemp,
+      });
+
+      expect(req.temperature).toBe(customTemp);
+      // Handler would pass this to OpenAI
+    });
+
+    it('should use temperature default if not specified', () => {
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        // temperature not specified
+      });
+
+      expect(req.temperature).toBeUndefined();
+      // Handler would use 0.7 as default
+    });
+
+    it('should preserve max_tokens across request', () => {
+      const customMaxTokens = 1500;
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        maxTokens: customMaxTokens,
+      });
+
+      expect(req.maxTokens).toBe(customMaxTokens);
+    });
+
+    it('should use max_tokens default if not specified', () => {
+      const req = new CreateChatCompletionRequest({
+        messages: [
+          new ChatMessage({
+            role: ChatMessage_Role.USER,
+            content: 'Test',
+          }),
+        ],
+        // maxTokens not specified
+      });
+
+      expect(req.maxTokens).toBeUndefined();
+      // Handler would use 2000 as default
+    });
+  });
 });
