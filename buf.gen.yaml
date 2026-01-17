@@ -1,0 +1,17 @@
+# buf.gen.yaml - Code generation configuration
+# Uses remote code generators from buf.build (v2 format)
+
+version: v2
+plugins:
+  # Generate TypeScript types from proto messages
+  - remote: buf.build/bufbuild/es:v1.10.0
+    out: lib/generated
+    opt:
+      - target=ts
+
+  # Generate Connect RPC service handlers and clients
+  - remote: buf.build/connectrpc/es:v1.4.0
+    out: lib/generated
+    opt:
+      - target=ts
+      - import_extension=.ts
