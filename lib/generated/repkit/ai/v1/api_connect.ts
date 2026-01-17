@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ChatCompletionChunk, ChatCompletionResponse, CreateChatCompletionRequest } from "./api_pb.js";
+import { ChatCompletionChunk, ChatCompletionResponse, CreateChatCompletionRequest } from "./api_pb";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -105,6 +105,5 @@ export const ChatService = {
       O: ChatCompletionChunk,
       kind: MethodKind.ServerStreaming,
     },
-  }
-};
-
+  },
+} as const;

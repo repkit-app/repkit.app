@@ -10,6 +10,7 @@ import {
   getRateLimitHeaders,
 } from '@/lib/rate-limit';
 import { anonymize } from '@/lib/utils/anonymize';
+import { logger } from '@/lib/utils/logger';
 
 /**
  * Rate Limit Interceptor
@@ -64,7 +65,7 @@ export const rateLimitInterceptor: Interceptor = (next) => {
     const violated = tokenViolated ? tokenRate : ipViolated ? ipRate : null;
 
     if (violated) {
-      console.warn('[RateLimit] Exceeded', {
+      logger.warn('Rate limit exceeded', {
         method: req.method.name,
         identifier: deviceToken
           ? `token#${anonymize(deviceToken)}`
@@ -79,18 +80,18 @@ export const rateLimitInterceptor: Interceptor = (next) => {
       );
 
       // Create response headers with rate limit info
-      const responseHeaders = getRateLimitHeaders(violated);
-      responseHeaders['Retry-After'] = retryAfter.toString();
+      const rateLimitHeaders = getRateLimitHeaders(violated);
+      const responseHeaders: Record<string, string> = {
+        ...rateLimitHeaders,
+        'Retry-After': retryAfter.toString(),
+      };
 
       throw new ConnectError(
         `Rate limit exceeded: ${violated.limit} requests per hour. Retry after ${retryAfter}s`,
         Code.ResourceExhausted,
         undefined,
         undefined,
-        Object.entries(responseHeaders).map(([key, value]) => [
-          key,
-          typeof value === 'string' ? value : value.toString(),
-        ])
+        Object.entries(responseHeaders).map(([key, value]) => [key, value])
       );
     }
 

@@ -3,7 +3,14 @@
  * Validates tool definitions against JSON Schema constraints before sending to OpenAI
  */
 
-import type { Tool, ToolSchema } from '@/lib/generated/proto/repkit/ai/v1/api_pb';
+import type { Tool, ToolSchema } from '@/lib/generated/repkit/ai/v1/api_pb';
+
+/**
+ * OpenAI tool name constraints
+ * Tool names must contain only: a-z, A-Z, 0-9, -, _
+ * This matches OpenAI's API requirements for tool names
+ */
+const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * Validate a single tool schema
@@ -18,6 +25,10 @@ export function validateToolSchema(tool: Tool): string[] {
   // Validate tool name
   if (!tool.name || typeof tool.name !== 'string') {
     errors.push('Tool name is required and must be a string');
+  } else if (!TOOL_NAME_PATTERN.test(tool.name)) {
+    errors.push(
+      `Tool name "${tool.name}" is invalid. Tool names must contain only letters, digits, underscores, and hyphens (a-zA-Z0-9_-)`
+    );
   }
 
   // Validate description

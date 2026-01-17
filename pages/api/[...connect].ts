@@ -1,16 +1,9 @@
 /**
- * Connect RPC Router
+ * Connect RPC Router (Pages Router)
  * Registers all ChatService RPC endpoints with authentication, rate limiting, and logging
- */
-
-import { nextJsApiRouter } from '@connectrpc/connect-next';
-import { authInterceptor } from '@/lib/interceptors/auth';
-import { rateLimitInterceptor } from '@/lib/interceptors/rate-limit';
-import { loggingInterceptor } from '@/lib/interceptors/logging';
-import registerChatServiceHandlers from '@/lib/handlers/chat-service';
-
-/**
- * API Router Configuration
+ *
+ * This implementation uses Next.js Pages Router API routes, which is the router
+ * supported by @connectrpc/connect-next for optimal compatibility.
  *
  * Endpoints:
  * - POST /api/repkit.ai.v1.ChatService/CreateStandardCompletion (unary)
@@ -29,7 +22,15 @@ import registerChatServiceHandlers from '@/lib/handlers/chat-service';
  * - X-RateLimit-Reset
  * - X-Request-Id (for tracing)
  */
-const { handler, config } = nextJsApiRouter({
+
+import type { NextApiHandler } from 'next';
+import { nextJsApiRouter } from '@connectrpc/connect-next';
+import { authInterceptor } from '@/lib/interceptors/auth';
+import { rateLimitInterceptor } from '@/lib/interceptors/rate-limit';
+import { loggingInterceptor } from '@/lib/interceptors/logging';
+import registerChatServiceHandlers from '@/lib/handlers/chat-service';
+
+const { handler: connectHandler, config: connectConfig } = nextJsApiRouter({
   routes: (router) => {
     // Register ChatService handlers
     registerChatServiceHandlers(router);
@@ -44,4 +45,13 @@ const { handler, config } = nextJsApiRouter({
   ],
 });
 
-export { handler as default, config };
+const handler: NextApiHandler = connectHandler as NextApiHandler;
+
+export default handler;
+
+// Pages Router requires config to be a literal object, not a variable
+export const config = {
+  api: {
+    bodyParser: false, // Connect handles the body
+  },
+};

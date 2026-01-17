@@ -5,29 +5,34 @@
 
 /**
  * Tool parameter definition in OpenAI JSON Schema format
+ * Supports additional properties for extensibility
  */
 export interface OpenAIToolProperty {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
   description?: string;
   enum?: string[];
+  [key: string]: unknown; // Allow additional JSON Schema properties
 }
 
 /**
  * OpenAI tool parameters schema
+ * Uses index signature for compatibility with JSON Schema
  */
 export interface OpenAIToolParameters {
   type: 'object';
   properties: Record<string, OpenAIToolProperty>;
   required?: string[];
+  [key: string]: unknown; // Allow additional JSON Schema properties
 }
 
 /**
  * OpenAI function definition within a tool
+ * Note: parameters are required by the OpenAI API for proper tool calling
  */
 export interface OpenAIToolFunction {
   name: string;
   description: string;
-  parameters?: OpenAIToolParameters;
+  parameters: OpenAIToolParameters;
   strict?: boolean;
 }
 

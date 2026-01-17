@@ -4,21 +4,23 @@
  */
 
 import { ConnectRouter, Code, ConnectError } from '@connectrpc/connect';
-import { ChatService } from '@/lib/generated/proto/repkit/ai/v1/api_connect';
+import { ChatService } from '@/lib/generated/repkit/ai/v1/api_connect';
 import {
   CreateChatCompletionRequest,
   ChatCompletionResponse,
   ChatCompletionChunk,
   ChatMessage as ProtoMessage,
+  Choice,
   Delta,
   DeltaChoice,
   ChatMessage_Role,
   ToolCall,
   Tool,
   ToolChoice,
+  ToolSchema_Property,
   Usage,
   PromptTokenDetails,
-} from '@/lib/generated/proto/repkit/ai/v1/api_pb';
+} from '@/lib/generated/repkit/ai/v1/api_pb';
 import {
   createChatCompletion,
   createChatCompletionStream,
@@ -28,6 +30,7 @@ import { validateTools } from '@/lib/validators/tool';
 import {
   type OpenAITool,
   type OpenAIToolChoice,
+  type OpenAIToolProperty,
   type OpenAIChatCompletionChoice,
   type OpenAIChatCompletionResponse,
   type OpenAIChatCompletionChunk,
@@ -38,20 +41,44 @@ import {
 
 /**
  * Convert proto Tool to OpenAI Tool format
+ * OpenAI requires parameters, so tools without them are invalid
  */
 function protoToOpenAITool(tool: InstanceType<typeof Tool>): OpenAITool {
+  // Convert proto properties to OpenAI properties
+  const convertProperties = (
+    protoProps: Record<string, InstanceType<typeof ToolSchema_Property>> | undefined
+  ): Record<string, OpenAIToolProperty> => {
+    if (!protoProps) return {};
+
+    const result: Record<string, OpenAIToolProperty> = {};
+    for (const [key, prop] of Object.entries(protoProps)) {
+      result[key] = {
+        type: prop.type as 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object',
+        description: prop.description,
+        enum: prop.enum && prop.enum.length > 0 ? prop.enum : undefined,
+      };
+    }
+    return result;
+  };
+
+  // Parameters are required by OpenAI - validated during request processing
+  const parameters = tool.parameters
+    ? {
+        type: 'object' as const,
+        properties: convertProperties(tool.parameters.properties),
+        required: tool.parameters.required || [],
+      }
+    : {
+        type: 'object' as const,
+        properties: {},
+      };
+
   return {
     type: 'function' as const,
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters
-        ? {
-            type: 'object' as const,
-            properties: tool.parameters.properties || {},
-            required: tool.parameters.required || [],
-          }
-        : undefined,
+      parameters,
       strict: tool.strict || false,
     },
   };
@@ -141,22 +168,25 @@ function openAIToProtoResponse(
   });
 
   if (completion.choices && completion.choices.length > 0) {
-    protoResponse.choices = completion.choices.map((choice) => ({
-      index: choice.index,
-      finishReason: choice.finish_reason || '',
-      message: {
-        role: 'assistant' as const,
-        content: choice.message.content,
-        toolCalls: choice.message.tool_calls?.map((tc) => ({
-          id: tc.id,
-          type: 'function' as const,
-          function: {
-            name: tc.function.name,
-            arguments: tc.function.arguments,
+    protoResponse.choices = completion.choices.map(
+      (choice) =>
+        new Choice({
+          index: choice.index,
+          finishReason: choice.finish_reason || '',
+          message: {
+            role: 'assistant',
+            content: choice.message.content,
+            toolCalls: choice.message.tool_calls?.map((tc) => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+              },
+            })),
           },
-        })),
-      },
-    }));
+        })
+    );
   }
 
   if (completion.usage) {
@@ -225,7 +255,12 @@ async function handleChatCompletionRequest(
     const validated = validateAndConvertRequest(req);
 
     // Determine model to use (client can override via req.model)
-    const model = req.model || defaultModel;
+    type ValidModel = 'gpt-4o-mini' | 'gpt-4o' | 'gpt-5-mini' | 'gpt-5.2';
+    const isValidModel = (value: string | undefined): value is ValidModel => {
+      return value !== undefined && ['gpt-4o-mini', 'gpt-4o', 'gpt-5-mini', 'gpt-5.2'].includes(value);
+    };
+
+    const model: ValidModel = isValidModel(req.model) ? req.model : defaultModel;
 
     // Call OpenAI with configurable model
     const completion = await createChatCompletion(model, {
@@ -272,20 +307,6 @@ export default function registerChatServiceHandlers(router: ConnectRouter) {
       return handleChatCompletionRequest(req, 'gpt-4o-mini');
     },
 
-          throw new ConnectError(
-            message,
-            status === 429
-              ? Code.ResourceExhausted
-              : status >= 500
-                ? Code.Internal
-                : Code.InvalidArgument
-          );
-        }
-
-        throw error;
-      }
-    },
-
     async *streamStandardCompletion(
       req: CreateChatCompletionRequest
     ): AsyncGenerator<ChatCompletionChunk> {
@@ -294,7 +315,12 @@ export default function registerChatServiceHandlers(router: ConnectRouter) {
         const validated = validateAndConvertRequest(req);
 
         // Determine model to use (client can override via req.model)
-        const model = req.model || 'gpt-5.2';
+        type ValidModel = 'gpt-4o-mini' | 'gpt-4o' | 'gpt-5-mini' | 'gpt-5.2';
+        const isValidModel = (value: string | undefined): value is ValidModel => {
+          return value !== undefined && ['gpt-4o-mini', 'gpt-4o', 'gpt-5-mini', 'gpt-5.2'].includes(value);
+        };
+
+        const model: ValidModel = isValidModel(req.model) ? req.model : 'gpt-5.2';
 
         // Call OpenAI with streaming
         const stream = createChatCompletionStream(model, {

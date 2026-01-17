@@ -9,7 +9,7 @@ import {
   ChatMessage_Role,
   Tool,
   ToolSchema,
-} from '@/lib/generated/proto/repkit/ai/v1/api_pb';
+} from '@/lib/generated/repkit/ai/v1/api_pb';
 
 /**
  * Create a valid signed request with auth fields
@@ -138,7 +138,6 @@ export function createRequestWithTools(): CreateChatCompletionRequest {
         name: 'get_weather',
         description: 'Get the weather for a location',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             location: {
               type: 'string',

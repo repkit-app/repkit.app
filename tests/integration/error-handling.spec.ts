@@ -11,7 +11,7 @@ import {
   ChatMessage_Role,
   Tool,
   ToolSchema,
-} from '@/lib/generated/proto/repkit/ai/v1/api_pb';
+} from '@/lib/generated/repkit/ai/v1/api_pb';
 import { setupTestEnv } from '../helpers/test-utils';
 
 describe('Error Handling and Edge Cases', () => {

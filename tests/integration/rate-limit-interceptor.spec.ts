@@ -8,7 +8,7 @@ import {
   CreateChatCompletionRequest,
   ChatMessage,
   ChatMessage_Role,
-} from '@/lib/generated/proto/repkit/ai/v1/api_pb';
+} from '@/lib/generated/repkit/ai/v1/api_pb';
 import { setupTestEnv } from '../helpers/test-utils';
 
 describe('Rate Limit Interceptor', () => {

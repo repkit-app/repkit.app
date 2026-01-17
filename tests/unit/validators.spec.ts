@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Tool, ToolSchema } from '@/lib/generated/proto/repkit/ai/v1/api_pb';
+import { Tool, ToolSchema } from '@/lib/generated/repkit/ai/v1/api_pb';
 import { validateTools, validateToolSchema, isTool } from '@/lib/validators/tool';
 
 describe('Tool Schema Validation', () => {
@@ -75,6 +75,61 @@ describe('Tool Schema Validation', () => {
         // Valid names should not have name-related errors
         const nameErrors = errors.filter((e) => e.includes('name'));
         expect(nameErrors.length).toBe(0);
+      });
+    });
+
+    it('should enforce OpenAI tool name constraints (a-zA-Z0-9_-)', () => {
+      // OpenAI requires tool names to contain only: letters, digits, underscores, hyphens
+      const validNames = [
+        'get_weather',       // underscore
+        'get-weather',       // hyphen (valid!)
+        'fetchData',         // camelCase (uppercase letters ok)
+        'fetch_data',        // snake_case
+        'fetch-data',        // kebab-case
+        'GetData',           // PascalCase
+        'get_weather_now',   // multiple underscores
+        'get-weather-now',   // multiple hyphens
+        'get_weather-now',   // mixed
+        'tool123',           // digits
+        'Tool_123-abc',      // mixed case with digits
+      ];
+
+      validNames.forEach((name) => {
+        const tool = new Tool({
+          name,
+          description: 'Test',
+        });
+        const errors = validateToolSchema(tool);
+        const nameErrors = errors.filter((e) => e.toLowerCase().includes('invalid'));
+        expect(nameErrors).toHaveLength(0, `Name "${name}" should be valid`);
+      });
+    });
+
+    it('should reject tool names with invalid characters', () => {
+      const invalidNames = [
+        'get weather',      // space
+        'get-weather!',     // exclamation
+        'get.weather',      // period
+        'get@weather',      // at symbol
+        'get$weather',      // dollar sign
+        'get(weather)',     // parentheses
+        'get/weather',      // slash
+        'get\\weather',     // backslash
+        'get*weather',      // asterisk
+        'get weather',      // space (duplicate for clarity)
+        'få_väder',         // non-ASCII characters
+        'get#weather',      // hash
+        '',                 // empty string
+      ];
+
+      invalidNames.forEach((name) => {
+        const tool = new Tool({
+          name,
+          description: 'Test',
+        });
+        const errors = validateToolSchema(tool);
+        // Should have at least one error for invalid name format
+        expect(errors.length).toBeGreaterThan(0, `Name "${name}" should be invalid`);
       });
     });
 

@@ -7,6 +7,7 @@ import { createHmac } from 'crypto';
 import type { Interceptor } from '@connectrpc/connect';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { anonymize } from '@/lib/utils/anonymize';
+import { logger } from '@/lib/utils/logger';
 
 /**
  * Authentication Interceptor
@@ -37,7 +38,7 @@ export const authInterceptor: Interceptor = (next) => {
 
     // Validate fields exist
     if (!signature || !timestamp) {
-      console.warn('[Auth] Missing authentication fields', {
+      logger.warn('Missing authentication fields', {
         method: req.method.name,
         url: req.url,
       });
@@ -55,7 +56,7 @@ export const authInterceptor: Interceptor = (next) => {
     const fiveMinutesMs = 5 * 60 * 1000;
 
     if (timeDiffMs > fiveMinutesMs) {
-      console.warn('[Auth] Timestamp validation failed', {
+      logger.warn('Timestamp validation failed', {
         method: req.method.name,
         identifier: deviceToken
           ? `token#${anonymize(deviceToken)}`
@@ -96,7 +97,7 @@ export const authInterceptor: Interceptor = (next) => {
           ? `token#${anonymize(deviceToken)}`
           : 'unknown';
 
-        console.warn('[Auth] Signature validation failed', {
+        logger.warn('Signature validation failed', {
           method: req.method.name,
           identifier,
         });
@@ -114,8 +115,8 @@ export const authInterceptor: Interceptor = (next) => {
         throw error;
       }
 
-      console.error('[Auth] Unexpected error during signature validation', {
-        error: error instanceof Error ? error.message : 'unknown',
+      logger.error('Unexpected error during signature validation', error instanceof Error ? error : null, {
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
       });
 
       throw new ConnectError(

@@ -7,6 +7,7 @@ import type { Interceptor } from '@connectrpc/connect';
 import * as Sentry from '@sentry/nextjs';
 import { calculateCost } from '@/lib/openai';
 import { anonymize } from '@/lib/utils/anonymize';
+import { logger } from '@/lib/utils/logger';
 
 /**
  * Logging Interceptor
@@ -72,7 +73,7 @@ export const loggingInterceptor: Interceptor = (next) => {
             cachedTokens
           );
 
-          console.log('[API Request]', {
+          logger.info('API Request completed', {
             requestId,
             method,
             identifier,
@@ -87,7 +88,7 @@ export const loggingInterceptor: Interceptor = (next) => {
             duration: `${duration}ms`,
           });
         } else {
-          console.log('[API Request]', {
+          logger.info('API Request completed', {
             requestId,
             method,
             identifier,
@@ -99,7 +100,7 @@ export const loggingInterceptor: Interceptor = (next) => {
         }
       } else {
         // Streaming response
-        console.log('[API Request] Streaming', {
+        logger.info('API Request streaming', {
           requestId,
           method,
           identifier,
@@ -119,7 +120,7 @@ export const loggingInterceptor: Interceptor = (next) => {
         error instanceof Error ? error.constructor.name : 'Unknown';
 
       // Log error
-      console.error('[API Error]', {
+      logger.error('API Request failed', error instanceof Error ? error : null, {
         requestId,
         method,
         identifier,
