@@ -28,7 +28,7 @@ import { nextJsApiRouter } from '@connectrpc/connect-next';
 import { authInterceptor } from '@/lib/interceptors/auth';
 import { rateLimitInterceptor } from '@/lib/interceptors/rate-limit';
 import { loggingInterceptor } from '@/lib/interceptors/logging';
-import registerChatServiceHandlers from '@/lib/handlers/chat-service';
+import { registerChatServiceHandlers } from '@/lib/handlers/chat-service';
 
 const { handler: connectHandler, config: connectConfig } = nextJsApiRouter({
   routes: (router) => {
