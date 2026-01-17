@@ -21,6 +21,87 @@ function getOpenAIClient(): OpenAI {
 }
 
 /**
+ * Retry configuration for OpenAI API calls
+ * - maxRetries: Maximum number of retry attempts
+ * - initialDelayMs: Starting delay for exponential backoff
+ * - maxDelayMs: Maximum delay between retries
+ * - jitterFactor: Random jitter to prevent thundering herd (0-1)
+ */
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelayMs: 100,
+  maxDelayMs: 2000,
+  jitterFactor: 0.1,
+};
+
+/**
+ * Determines if an error is retryable (transient failure)
+ * Retryable errors: rate limit (429), server errors (500, 502, 503, 504)
+ */
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof OpenAI.APIError) {
+    const status = error.status;
+    // Retry on rate limits and server errors
+    return status === 429 || (status >= 500 && status < 600);
+  }
+  // Network errors are also retryable
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('econnrefused') ||
+      message.includes('econnreset') ||
+      message.includes('etimedout') ||
+      message.includes('socket hang up')
+    );
+  }
+  return false;
+}
+
+/**
+ * Calculate exponential backoff delay with jitter
+ */
+function calculateBackoffDelay(attempt: number): number {
+  const exponentialDelay = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt);
+  const cappedDelay = Math.min(exponentialDelay, RETRY_CONFIG.maxDelayMs);
+  const jitter = cappedDelay * RETRY_CONFIG.jitterFactor * Math.random();
+  return cappedDelay + jitter;
+}
+
+/**
+ * Wraps an async function with retry logic
+ * Retries up to maxRetries times on retryable errors
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  operationName: string
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableError(error)) {
+        // Non-retryable error, throw immediately
+        throw error;
+      }
+
+      if (attempt === RETRY_CONFIG.maxRetries) {
+        // Out of retries
+        break;
+      }
+
+      const delayMs = calculateBackoffDelay(attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Tool call information returned by assistant messages
  */
 export interface ToolCallInfo {
@@ -113,52 +194,57 @@ export interface ChatCompletionRequest {
  * Note: gpt-5-* models require max_completion_tokens instead of max_tokens.
  * The OpenAI SDK types don't enforce this at compile time because max_tokens
  * is still valid for older models - it's a runtime error from OpenAI.
+ *
+ * Includes retry logic with exponential backoff for transient failures
+ * (rate limits, server errors, network issues).
  */
 export async function createChatCompletion(
   model: "gpt-4o-mini" | "gpt-4o" | "gpt-5-mini" | "gpt-5.2",
   request: ChatCompletionRequest
 ): Promise<Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>> {
-  const client = getOpenAIClient();
+  return withRetry(async () => {
+    const client = getOpenAIClient();
 
-  // gpt-5-* models use max_completion_tokens, older models use max_tokens
-  const isGpt5 = model.startsWith("gpt-5");
-  const tokenLimit = request.max_tokens ?? 2000;
+    // gpt-5-* models use max_completion_tokens, older models use max_tokens
+    const isGpt5 = model.startsWith("gpt-5");
+    const tokenLimit = request.max_tokens ?? 2000;
 
-  try {
-    const completion = await client.chat.completions.create({
-      model,
-      messages: request.messages as Parameters<
-        typeof client.chat.completions.create
-      >[0]["messages"],
-      temperature: request.temperature ?? 0.7,
-      ...(isGpt5
-        ? { max_completion_tokens: tokenLimit }
-        : { max_tokens: tokenLimit }),
-      stream: false,
-      ...(request.tools && { tools: request.tools }),
-      ...(request.tool_choice && { tool_choice: request.tool_choice }),
-    });
-
-    return completion;
-  } catch (error: unknown) {
-    // Sentry: Report OpenAI API errors
-    const Sentry = await import("@sentry/nextjs");
-
-    Sentry.captureException(error, {
-      tags: {
-        service: "openai",
+    try {
+      const completion = await client.chat.completions.create({
         model,
-      },
-      extra: {
-        message_count: request.messages.length,
-        has_tools: Boolean(request.tools),
-        // DO NOT include message content or tool definitions
-      },
-    });
+        messages: request.messages as Parameters<
+          typeof client.chat.completions.create
+        >[0]["messages"],
+        temperature: request.temperature ?? 0.7,
+        ...(isGpt5
+          ? { max_completion_tokens: tokenLimit }
+          : { max_tokens: tokenLimit }),
+        stream: false,
+        ...(request.tools && { tools: request.tools }),
+        ...(request.tool_choice && { tool_choice: request.tool_choice }),
+      });
 
-    // Re-throw to let API route handle the response
-    throw error;
-  }
+      return completion;
+    } catch (error: unknown) {
+      // Sentry: Report OpenAI API errors
+      const Sentry = await import("@sentry/nextjs");
+
+      Sentry.captureException(error, {
+        tags: {
+          service: "openai",
+          model,
+        },
+        extra: {
+          message_count: request.messages.length,
+          has_tools: Boolean(request.tools),
+          // DO NOT include message content or tool definitions
+        },
+      });
+
+      // Re-throw to let retry logic and API route handle the response
+      throw error;
+    }
+  }, "createChatCompletion");
 }
 
 /**
@@ -168,38 +254,71 @@ export async function createChatCompletion(
  * arrive from the OpenAI API. Use in an async generator to stream responses.
  *
  * Note: gpt-5-* models require max_completion_tokens instead of max_tokens.
+ *
+ * Includes retry logic with exponential backoff for initial stream creation
+ * (transient failures like rate limits, server errors, network issues).
+ * Individual chunk delivery errors are not retried - they indicate the stream
+ * is degraded and recovery should happen at the handler level.
  */
 export async function* createChatCompletionStream(
   model: "gpt-4o-mini" | "gpt-4o" | "gpt-5-mini" | "gpt-5.2",
   request: ChatCompletionRequest
 ): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk> {
-  const client = getOpenAIClient();
+  // Retry only applies to initial stream creation, not chunk delivery
+  const stream = await withRetry(async () => {
+    const client = getOpenAIClient();
 
-  // gpt-5-* models use max_completion_tokens, older models use max_tokens
-  const isGpt5 = model.startsWith("gpt-5");
-  const tokenLimit = request.max_tokens ?? 2000;
+    // gpt-5-* models use max_completion_tokens, older models use max_tokens
+    const isGpt5 = model.startsWith("gpt-5");
+    const tokenLimit = request.max_tokens ?? 2000;
 
+    try {
+      const streamResponse = await client.chat.completions.create({
+        model,
+        messages: request.messages as Parameters<
+          typeof client.chat.completions.create
+        >[0]["messages"],
+        temperature: request.temperature ?? 0.7,
+        ...(isGpt5
+          ? { max_completion_tokens: tokenLimit }
+          : { max_tokens: tokenLimit }),
+        stream: true,
+        ...(request.tools && { tools: request.tools }),
+        ...(request.tool_choice && { tool_choice: request.tool_choice }),
+      });
+
+      return streamResponse;
+    } catch (error: unknown) {
+      // Sentry: Report OpenAI API errors during stream initialization
+      const Sentry = await import("@sentry/nextjs");
+
+      Sentry.captureException(error, {
+        tags: {
+          service: "openai",
+          model,
+          stream: true,
+          phase: "initialization",
+        },
+        extra: {
+          message_count: request.messages.length,
+          has_tools: Boolean(request.tools),
+          // DO NOT include message content or tool definitions
+        },
+      });
+
+      // Re-throw to let retry logic handle transient failures
+      throw error;
+    }
+  }, "createChatCompletionStream");
+
+  // Yield each chunk as it arrives
+  // Note: Errors during chunk delivery are not retried at this level
   try {
-    const stream = await client.chat.completions.create({
-      model,
-      messages: request.messages as Parameters<
-        typeof client.chat.completions.create
-      >[0]["messages"],
-      temperature: request.temperature ?? 0.7,
-      ...(isGpt5
-        ? { max_completion_tokens: tokenLimit }
-        : { max_tokens: tokenLimit }),
-      stream: true,
-      ...(request.tools && { tools: request.tools }),
-      ...(request.tool_choice && { tool_choice: request.tool_choice }),
-    });
-
-    // Yield each chunk as it arrives
     for await (const chunk of stream) {
       yield chunk;
     }
   } catch (error: unknown) {
-    // Sentry: Report OpenAI API errors
+    // Sentry: Report errors during stream delivery
     const Sentry = await import("@sentry/nextjs");
 
     Sentry.captureException(error, {
@@ -207,15 +326,14 @@ export async function* createChatCompletionStream(
         service: "openai",
         model,
         stream: true,
+        phase: "delivery",
       },
       extra: {
-        message_count: request.messages.length,
-        has_tools: Boolean(request.tools),
         // DO NOT include message content or tool definitions
       },
     });
 
-    // Re-throw to let handler deal with the error
+    // Re-throw to let handler deal with stream errors
     throw error;
   }
 }

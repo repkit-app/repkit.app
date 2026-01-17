@@ -1,9 +1,34 @@
 /**
  * Tool Schema Validation
  * Validates tool definitions against JSON Schema constraints before sending to OpenAI
+ *
+ * Includes validation result caching to avoid repeated validation of identical tool sets.
+ * Cache is keyed by a hash of the serialized tool definitions.
  */
 
+import { createHash } from 'crypto';
 import type { Tool, ToolSchema } from '@/lib/generated/repkit/ai/v1/api_pb';
+
+/**
+ * Cache for tool validation results
+ * Maps tool definition hash → validation errors array
+ * Initialized once and reused across requests
+ */
+const validationCache = new Map<string, string[]>();
+
+/**
+ * Generate a hash of tool definitions for cache key
+ * Ensures identical tool sets map to the same cache entry
+ */
+function getToolsHash(tools: Tool[]): string {
+  const toolStrings = tools
+    .map(t => `${t.name}|${t.description}|${JSON.stringify(t.parameters)}`)
+    .sort();
+
+  return createHash('sha256')
+    .update(toolStrings.join('\n'))
+    .digest('hex');
+}
 
 /**
  * OpenAI tool name constraints
@@ -78,20 +103,35 @@ export function validateToolSchema(tool: Tool): string[] {
  * Validate an array of tools
  * Returns errors for all invalid tools
  *
+ * Uses caching to avoid repeated validation of identical tool sets.
+ * Validation results are cached indefinitely per tool definition hash.
+ *
  * @param tools - Tools to validate
  * @returns Array of error messages (empty if all valid)
  */
 export function validateTools(tools: Tool[]): string[] {
-  const errors: string[] = [];
-
   if (!Array.isArray(tools)) {
     return ['Tools must be an array'];
   }
 
+  // Check cache first
+  const toolsHash = getToolsHash(tools);
+  const cached = validationCache.get(toolsHash);
+
+  if (cached) {
+    // Return a copy to prevent cache pollution
+    return [...cached];
+  }
+
+  // Validate all tools
+  const errors: string[] = [];
   for (const tool of tools) {
     const toolErrors = validateToolSchema(tool);
     errors.push(...toolErrors);
   }
+
+  // Cache the result
+  validationCache.set(toolsHash, errors);
 
   return errors;
 }
