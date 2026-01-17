@@ -62,13 +62,26 @@ export const loggingInterceptor: Interceptor = (next) => {
       if ('message' in response && !response.stream) {
         // Unary response - has usage metadata
         const message = response.message as Record<string, unknown>;
-        const usage = message.usage as Record<string, unknown> | undefined;
+        const usage = message.usage;
 
+        // Type guard: check if usage exists and is an object
         if (usage && typeof usage === 'object') {
-          const promptTokensDetails = (usage as { promptTokensDetails?: Record<string, unknown> }).promptTokensDetails;
-          const cachedTokens = (promptTokensDetails?.cachedTokens as number) || 0;
-          const promptTokens = (usage as { promptTokens?: number }).promptTokens || 0;
-          const completionTokens = (usage as { completionTokens?: number }).completionTokens || 0;
+          const u = usage as Record<string, unknown>;
+          const promptTokensDetails = u.promptTokensDetails;
+
+          // Extract numeric values with fallback defaults
+          const cachedTokensValue = typeof promptTokensDetails === 'object' && promptTokensDetails !== null
+            ? (promptTokensDetails as Record<string, unknown>).cachedTokens
+            : 0;
+          const promptTokensValue = u.promptTokens ?? 0;
+          const completionTokensValue = u.completionTokens ?? 0;
+          const totalTokensValue = u.totalTokens ?? 0;
+
+          // Safely coerce to numbers
+          const cachedTokens = Number(cachedTokensValue) || 0;
+          const promptTokens = Number(promptTokensValue) || 0;
+          const completionTokens = Number(completionTokensValue) || 0;
+          const totalTokens = Number(totalTokensValue) || 0;
 
           const cost = calculateCost(
             method.includes('Mini') ? 'gpt-4o-mini' : 'gpt-5.2',
@@ -84,10 +97,10 @@ export const loggingInterceptor: Interceptor = (next) => {
             userAgent: req.header.get('user-agent') || 'unknown',
             messages,
             tools,
-            promptTokens: usage.promptTokens || 0,
+            promptTokens,
             cachedTokens,
-            completionTokens: usage.completionTokens || 0,
-            totalTokens: usage.totalTokens || 0,
+            completionTokens,
+            totalTokens,
             cost: `$${cost.toFixed(6)}`,
             duration: `${duration}ms`,
           });
