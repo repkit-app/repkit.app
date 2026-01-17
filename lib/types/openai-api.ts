@@ -72,7 +72,7 @@ export function isErrorWithStatus(error: unknown): error is Error & { status: nu
  * Type guard for OpenAI response with id field
  */
 export function hasIdField(obj: unknown): obj is { id: string } {
-  return typeof obj === 'object' && obj !== null && 'id' in obj;
+  return typeof obj === 'object' && obj !== null && 'id' in obj && typeof (obj as { id: unknown }).id === 'string';
 }
 
 /**
@@ -126,6 +126,7 @@ export interface OpenAIChatCompletionChunkDelta {
   role?: string;
   content?: string;
   tool_calls?: Array<{
+    index: number;
     id: string;
     type?: string;
     function?: {

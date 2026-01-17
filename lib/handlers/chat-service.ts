@@ -293,7 +293,7 @@ async function handleChatCompletionRequest(
 /**
  * ChatService Handler Registration
  */
-export default function registerChatServiceHandlers(router: ConnectRouter) {
+export function registerChatServiceHandlers(router: ConnectRouter) {
   router.service(ChatService, {
     async createStandardCompletion(
       req: CreateChatCompletionRequest
@@ -344,6 +344,7 @@ export default function registerChatServiceHandlers(router: ConnectRouter) {
             chunk.choices = openaiChunk.choices.map((choice) => {
               const deltaContent = choice.delta?.content || '';
               const deltaToolCalls = choice.delta?.tool_calls?.map((tc) => ({
+                index: tc.index,
                 id: tc.id,
                 type: 'function' as const,
                 function: {

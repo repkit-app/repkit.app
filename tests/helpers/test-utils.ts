@@ -36,21 +36,11 @@ export function createAuthenticatedRequest(
     deviceToken,
   });
 
-  // Serialize message for signature
-  const messageJson = JSON.stringify({
-    messages: req.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
-    tools: req.tools,
-    temperature: req.temperature,
-    maxTokens: req.maxTokens,
-    toolChoice: req.toolChoice,
-    deviceToken: req.deviceToken,
-  });
+  // Serialize message to proto binary for signature (matches auth interceptor)
+  const messageBytes = req.toBinary();
 
   const payload = Buffer.concat([
-    Buffer.from(messageJson, 'utf-8'),
+    messageBytes,
     Buffer.from(timestamp, 'utf-8'),
   ]);
 
@@ -98,20 +88,11 @@ export function createExpiredTimestampRequest(): {
     deviceToken,
   });
 
-  const messageJson = JSON.stringify({
-    messages: req.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
-    tools: req.tools,
-    temperature: req.temperature,
-    maxTokens: req.maxTokens,
-    toolChoice: req.toolChoice,
-    deviceToken: req.deviceToken,
-  });
+  // Serialize message to proto binary for signature (matches auth interceptor)
+  const messageBytes = req.toBinary();
 
   const payload = Buffer.concat([
-    Buffer.from(messageJson, 'utf-8'),
+    messageBytes,
     Buffer.from(timestamp, 'utf-8'),
   ]);
 
