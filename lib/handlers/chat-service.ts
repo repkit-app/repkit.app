@@ -14,6 +14,8 @@ import {
   DeltaChoice,
   ChatMessage_Role,
   ToolCall,
+  Tool,
+  ToolChoice,
   Usage,
   PromptTokenDetails,
 } from '@/lib/generated/proto/repkit/ai/v1/api_pb';
@@ -22,6 +24,71 @@ import {
   type ChatMessage as OpenAIMessage,
 } from '@/lib/openai';
 import { validateTools } from '@/lib/validators/tool';
+import {
+  type OpenAITool,
+  type OpenAIToolChoice,
+  isErrorWithStatus,
+  hasIdField,
+} from '@/lib/types/openai-api';
+
+/**
+ * Convert proto Tool to OpenAI Tool format
+ */
+function protoToOpenAITool(tool: InstanceType<typeof Tool>): OpenAITool {
+  return {
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+        ? {
+            type: 'object' as const,
+            properties: tool.parameters.properties || {},
+            required: tool.parameters.required || [],
+          }
+        : undefined,
+      strict: tool.strict || false,
+    },
+  };
+}
+
+/**
+ * Convert proto ToolChoice to OpenAI ToolChoice format
+ */
+function protoToOpenAIToolChoice(toolChoice: unknown): OpenAIToolChoice | undefined {
+  if (!toolChoice) return undefined;
+
+  // Handle string choices (auto, none, required)
+  if (typeof toolChoice === 'string') {
+    if (toolChoice === 'auto' || toolChoice === 'none' || toolChoice === 'required') {
+      return toolChoice;
+    }
+  }
+
+  // Handle specific tool choice (structured)
+  const tc = toolChoice as Record<string, unknown>;
+  if (tc.stringChoice) {
+    const str = String(tc.stringChoice);
+    if (str === 'auto' || str === 'none' || str === 'required') {
+      return str as OpenAIToolChoice;
+    }
+  }
+
+  // Handle function selection
+  if (tc.function && typeof tc.function === 'object') {
+    const fn = tc.function as Record<string, unknown>;
+    if (fn.functionName) {
+      return {
+        type: 'function' as const,
+        function: {
+          name: String(fn.functionName),
+        },
+      };
+    }
+  }
+
+  return undefined;
+}
 
 /**
  * Convert proto ChatMessage to OpenAI ChatMessage
@@ -59,18 +126,23 @@ function openAIToProtoResponse(
   response: Awaited<ReturnType<typeof createChatCompletion>>
 ): ChatCompletionResponse {
   // Handle both direct responses and wrapped responses from OpenAI API
-  const completion = 'id' in response ? response : (response as any).message;
+  const completion = hasIdField(response)
+    ? response
+    : hasIdField((response as Record<string, unknown>).message)
+      ? ((response as Record<string, unknown>).message as Record<string, unknown>)
+      : response;
 
   const protoResponse = new ChatCompletionResponse({
-    id: completion.id,
-    model: completion.model,
-    created: completion.created.toString(),
-    object: completion.object as string,
+    id: String(completion.id ?? ''),
+    model: String(completion.model ?? ''),
+    created: String(completion.created ?? ''),
+    object: String(completion.object ?? 'chat.completion'),
   });
 
-  if (completion.choices && completion.choices.length > 0) {
-    protoResponse.choices = completion.choices.map(
-      (choice: any, index: number) => ({
+  const choices = (completion as Record<string, unknown>).choices;
+  if (Array.isArray(choices) && choices.length > 0) {
+    protoResponse.choices = choices.map(
+      (choice: unknown, index: number) => ({
         index,
         finishReason: choice.finish_reason || '',
         message: {
@@ -140,23 +212,11 @@ async function handleChatCompletionRequest(
     // Convert proto messages to OpenAI format
     const openaiMessages = req.messages.map(protoToOpenAIMessage);
 
-    // Convert proto tools to OpenAI format
-    // TODO: Fix #3 - Replace any cast with proper typed definition
-    const openaiTools = req.tools?.map((tool) => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters
-          ? {
-              type: 'object' as const,
-              properties: tool.parameters.properties || {},
-              required: tool.parameters.required || [],
-            }
-          : { type: 'object' as const, properties: {} },
-        strict: tool.strict || false,
-      },
-    })) as any;
+    // Convert proto tools to properly typed OpenAI format
+    const openaiTools = req.tools?.map(protoToOpenAITool);
+
+    // Convert proto tool choice to OpenAI format
+    const openaiToolChoice = protoToOpenAIToolChoice(req.toolChoice);
 
     // Call OpenAI with configurable model
     const completion = await createChatCompletion(model, {
@@ -164,22 +224,19 @@ async function handleChatCompletionRequest(
       temperature: req.temperature ?? 0.7,
       max_tokens: req.maxTokens ?? 2000,
       tools: openaiTools,
-      tool_choice: req.toolChoice as any,
+      tool_choice: openaiToolChoice,
     });
 
     // Convert response to proto format
     return openAIToProtoResponse(completion);
   } catch (error) {
-    // Handle OpenAI errors
-    if (error instanceof Error && (error as any).status !== undefined) {
-      const status = (error as any).status;
-      const message = error.message;
-
+    // Handle OpenAI errors with proper type checking
+    if (isErrorWithStatus(error)) {
       throw new ConnectError(
-        message,
-        status === 429
+        error.message,
+        error.status === 429
           ? Code.ResourceExhausted
-          : status >= 500
+          : error.status >= 500
             ? Code.Internal
             : Code.InvalidArgument
       );
