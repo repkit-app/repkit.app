@@ -118,6 +118,10 @@ message CreateChatCompletionRequest {
   optional string device_token = 6;
   optional string timestamp = 7;
   optional string signature = 8;
+
+  // Model selection (allows runtime configuration)
+  // Defaults: "gpt-5.2" for standard, "gpt-5-mini" for mini
+  optional string model = 9;
 }
 
 /**
