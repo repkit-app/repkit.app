@@ -12,8 +12,8 @@
     "test:hmac": "node scripts/dev/test-hmac.js"
   },
   "dependencies": {
-    "@connectrpc/connect": "^1.7.0",
-    "@connectrpc/connect-next": "^1.7.0",
+    "@connectrpc/connect": "^2.1.0",
+    "@connectrpc/connect-next": "^2.1.0",
     "@sentry/nextjs": "^10.33.0",
     "@upstash/redis": "^1.35.7",
     "next": "^15.1.0",
