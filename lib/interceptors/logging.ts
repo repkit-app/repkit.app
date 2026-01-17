@@ -6,17 +6,7 @@
 import type { Interceptor } from '@connectrpc/connect';
 import * as Sentry from '@sentry/nextjs';
 import { calculateCost } from '@/lib/openai';
-
-/**
- * Anonymize PII for logging
- */
-function anonymize(value: string): string {
-  const crypto = require('crypto');
-  const key = process.env.LOG_HASH_KEY || 'change-me-in-prod';
-  return value
-    ? crypto.createHmac('sha256', key).update(value).digest('hex').slice(0, 12)
-    : 'unknown';
-}
+import { anonymize } from '@/lib/utils/anonymize';
 
 /**
  * Logging Interceptor

@@ -6,17 +6,7 @@
 import { createHmac } from 'crypto';
 import type { Interceptor } from '@connectrpc/connect';
 import { Code, ConnectError } from '@connectrpc/connect';
-
-/**
- * Anonymize PII for logging using HMAC
- * Prevents offline reversal of hashed values from leaked logs
- */
-function anonymize(value: string): string {
-  const key = process.env.LOG_HASH_KEY || 'change-me-in-prod';
-  return value
-    ? createHmac('sha256', key).update(value).digest('hex').slice(0, 12)
-    : 'unknown';
-}
+import { anonymize } from '@/lib/utils/anonymize';
 
 /**
  * Authentication Interceptor

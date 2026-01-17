@@ -9,17 +9,7 @@ import {
   checkRateLimit,
   getRateLimitHeaders,
 } from '@/lib/rate-limit';
-
-/**
- * Anonymize PII for logging
- */
-function anonymize(value: string): string {
-  const crypto = require('crypto');
-  const key = process.env.LOG_HASH_KEY || 'change-me-in-prod';
-  return value
-    ? crypto.createHmac('sha256', key).update(value).digest('hex').slice(0, 12)
-    : 'unknown';
-}
+import { anonymize } from '@/lib/utils/anonymize';
 
 /**
  * Rate Limit Interceptor
