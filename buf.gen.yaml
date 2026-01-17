@@ -14,3 +14,4 @@ plugins:
     out: lib/generated
     opt:
       - target=ts
+      - import_extension=.ts
