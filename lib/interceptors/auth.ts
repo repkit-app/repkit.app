@@ -126,11 +126,7 @@ export const authInterceptor: Interceptor = (next) => {
         );
       }
 
-      // Signature valid - store auth info on request for logging interceptor
-      (req as any)._authenticated = true;
-      (req as any)._deviceToken = deviceToken;
-
-      // Forward request to next handler
+      // Signature valid - forward request to next handler
       return await next(req);
     } catch (error) {
       if (error instanceof ConnectError) {

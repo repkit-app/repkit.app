@@ -104,13 +104,7 @@ export const rateLimitInterceptor: Interceptor = (next) => {
       );
     }
 
-    // Store rate limit info on request for logging interceptor
-    const reqMetadata = req as unknown as Record<string, unknown>;
-    reqMetadata['_rateLimitToken'] = tokenRate;
-    reqMetadata['_rateLimitIp'] = ipRate;
-    reqMetadata['_deviceToken'] = deviceToken;
-    reqMetadata['_ip'] = ip;
-
+    // Rate limit check passed - continue to next handler
     return await next(req);
   };
 };

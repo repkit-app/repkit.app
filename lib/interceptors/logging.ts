@@ -40,16 +40,25 @@ export const loggingInterceptor: Interceptor = (next) => {
     const startTime = Date.now();
     const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
-    // Extract identifiers for logging (from rate limit interceptor)
-    const deviceToken = (req as any)._deviceToken as string | undefined;
-    const ip = (req as any)._ip as string || 'unknown';
+    // Extract identifiers for logging (from request message and headers)
+    const msg = req.message as any;
+    const deviceToken = typeof msg['deviceToken'] === 'string' ? msg['deviceToken'] : undefined;
+
+    // Extract client IP from request headers
+    // Priority: Cloudflare Edge IP > Real IP > First X-Forwarded-For > fallback
+    const headers = req.header;
+    const cfIp = headers.get('cf-connecting-ip')?.trim();
+    const realIp = headers.get('x-real-ip')?.trim();
+    const xff = headers.get('x-forwarded-for') || '';
+    const xffFirst = xff.split(',')[0]?.trim();
+    const ip = cfIp || realIp || xffFirst || 'unknown';
+
     const identifier = deviceToken
       ? `token#${anonymize(deviceToken)}`
       : `ip#${anonymize(ip)}`;
 
     // Extract request details
     const method = req.method.name;
-    const msg = req.message as any;
     const messages = (msg.messages || []).length;
     const tools = (msg.tools || []).length;
 
