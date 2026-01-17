@@ -30,7 +30,7 @@ import { rateLimitInterceptor } from '@/lib/interceptors/rate-limit';
 import { loggingInterceptor } from '@/lib/interceptors/logging';
 import { registerChatServiceHandlers } from '@/lib/handlers/chat-service';
 
-const { handler: connectHandler, config: connectConfig } = nextJsApiRouter({
+const { handler: connectHandler } = nextJsApiRouter({
   routes: (router) => {
     // Register ChatService handlers
     registerChatServiceHandlers(router);

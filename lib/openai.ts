@@ -71,10 +71,7 @@ function calculateBackoffDelay(attempt: number): number {
  * Wraps an async function with retry logic
  * Retries up to maxRetries times on retryable errors
  */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  operationName: string
-): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
@@ -244,7 +241,7 @@ export async function createChatCompletion(
       // Re-throw to let retry logic and API route handle the response
       throw error;
     }
-  }, "createChatCompletion");
+  });
 }
 
 /**
@@ -309,7 +306,7 @@ export async function* createChatCompletionStream(
       // Re-throw to let retry logic handle transient failures
       throw error;
     }
-  }, "createChatCompletionStream");
+  });
 
   // Yield each chunk as it arrives
   // Note: Errors during chunk delivery are not retried at this level

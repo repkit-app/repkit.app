@@ -4,7 +4,6 @@
  */
 
 import type { Interceptor } from '@connectrpc/connect';
-import * as Sentry from '@sentry/nextjs';
 import { calculateCost } from '@/lib/openai';
 import { anonymize } from '@/lib/utils/anonymize';
 import { logger } from '@/lib/utils/logger';

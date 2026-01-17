@@ -16,7 +16,6 @@ import {
   ChatMessage_Role,
   ToolCall,
   Tool,
-  ToolChoice,
   ToolSchema_Property,
   Usage,
   PromptTokenDetails,
@@ -31,12 +30,8 @@ import {
   type OpenAITool,
   type OpenAIToolChoice,
   type OpenAIToolProperty,
-  type OpenAIChatCompletionChoice,
   type OpenAIChatCompletionResponse,
-  type OpenAIChatCompletionChunk,
-  type OpenAIUsageDetails,
   isErrorWithStatus,
-  hasIdField,
 } from '@/lib/types/openai-api';
 
 /**

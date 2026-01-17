@@ -7,7 +7,7 @@
  */
 
 import { createHash } from 'crypto';
-import type { Tool, ToolSchema } from '@/lib/generated/repkit/ai/v1/api_pb';
+import type { Tool } from '@/lib/generated/repkit/ai/v1/api_pb';
 
 /**
  * Cache for tool validation results
