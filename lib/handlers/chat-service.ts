@@ -140,7 +140,7 @@ function protoToOpenAIMessage(msg: ProtoMessage): OpenAIMessage {
 
   return {
     role: roleMap[msg.role as ChatMessage_Role] || 'user',
-    content: msg.content || null,
+    content: msg.content ?? null,
     name: msg.name,
     tool_call_id: msg.toolCallId,
     tool_calls: msg.toolCalls?.map((tc: ToolCall) => ({
@@ -345,7 +345,7 @@ export function registerChatServiceHandlers(router: ConnectRouter) {
 
           if (openaiChunk.choices && openaiChunk.choices.length > 0) {
             chunk.choices = openaiChunk.choices.map((choice) => {
-              const deltaContent = choice.delta?.content || '';
+              const deltaContent = choice.delta?.content;
               const deltaToolCalls = choice.delta?.tool_calls?.map((tc) => ({
                 index: tc.index,
                 id: tc.id,
@@ -361,7 +361,7 @@ export function registerChatServiceHandlers(router: ConnectRouter) {
                 finishReason: choice.finish_reason || '',
                 delta: new Delta({
                   role: 'assistant',
-                  content: deltaContent,
+                  content: deltaContent ?? undefined,
                   toolCalls: deltaToolCalls.length > 0 ? deltaToolCalls : undefined,
                 }),
               });
