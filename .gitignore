@@ -53,3 +53,6 @@ worktrees/
 
 # generated protobuf code
 lib/generated/
+
+# buf cache
+.buf/
