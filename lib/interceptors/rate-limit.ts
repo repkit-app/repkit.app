@@ -68,8 +68,10 @@ export const rateLimitInterceptor: Interceptor = (next) => {
       : null;
     const ipRate = await checkRateLimit(ip, false);
 
-    // Determine if either bucket is violated
-    const violated = tokenRate && !tokenRate.allowed ? tokenRate : !ipRate.allowed ? ipRate : null;
+    // Determine if rate limit is violated (both must be within limits - AND logic)
+    const tokenViolated = tokenRate && !tokenRate.allowed;
+    const ipViolated = !ipRate.allowed;
+    const violated = tokenViolated ? tokenRate : ipViolated ? ipRate : null;
 
     if (violated) {
       console.warn('[RateLimit] Exceeded', {
