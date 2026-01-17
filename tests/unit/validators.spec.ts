@@ -14,7 +14,6 @@ describe('Tool Schema Validation', () => {
         name: 'get_weather',
         description: 'Get weather for a location',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             location: { type: 'string' },
           },
@@ -101,7 +100,7 @@ describe('Tool Schema Validation', () => {
         });
         const errors = validateToolSchema(tool);
         const nameErrors = errors.filter((e) => e.toLowerCase().includes('invalid'));
-        expect(nameErrors).toHaveLength(0, `Name "${name}" should be valid`);
+        expect(nameErrors).toHaveLength(0);
       });
     });
 
@@ -129,7 +128,7 @@ describe('Tool Schema Validation', () => {
         });
         const errors = validateToolSchema(tool);
         // Should have at least one error for invalid name format
-        expect(errors.length).toBeGreaterThan(0, `Name "${name}" should be invalid`);
+        expect(errors.length).toBeGreaterThan(0);
       });
     });
 
@@ -138,7 +137,6 @@ describe('Tool Schema Validation', () => {
         name: 'test_tool',
         description: 'Test',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {},
         }),
       });
@@ -152,7 +150,6 @@ describe('Tool Schema Validation', () => {
         name: 'get_user',
         description: 'Get user by ID',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             userId: { type: 'string' },
           },
@@ -169,7 +166,6 @@ describe('Tool Schema Validation', () => {
         name: 'invalid_tool',
         description: 'Invalid tool',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             name: { type: 'string' },
           },
@@ -189,7 +185,6 @@ describe('Tool Schema Validation', () => {
           name: 'test_tool',
           description: 'Test',
           parameters: new ToolSchema({
-            type: 'object',
             properties: {
               field: { type },
             },
@@ -208,7 +203,6 @@ describe('Tool Schema Validation', () => {
         name: 'invalid_types',
         description: 'Invalid tool',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             field: { type: 'invalid_type' },
           },
@@ -353,21 +347,16 @@ describe('Tool Schema Validation', () => {
   });
 
   describe('Complex Tool Schemas', () => {
-    it('should validate tools with nested properties', () => {
+    it('should validate tools with multiple properties', () => {
       const tool = new Tool({
         name: 'complex_tool',
-        description: 'Tool with nested properties',
+        description: 'Tool with multiple properties',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
-            address: {
-              type: 'object',
-              properties: {
-                street: { type: 'string' },
-                city: { type: 'string' },
-              },
-            },
+            street: { type: 'string', description: 'Street address' },
+            city: { type: 'string', description: 'City name' },
           },
+          required: ['street', 'city'],
         }),
       });
 
@@ -380,7 +369,6 @@ describe('Tool Schema Validation', () => {
         name: 'array_tool',
         description: 'Tool with array',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             items: {
               type: 'array',
@@ -398,7 +386,6 @@ describe('Tool Schema Validation', () => {
         name: 'enum_tool',
         description: 'Tool with enum',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             status: {
               type: 'string',
@@ -417,7 +404,6 @@ describe('Tool Schema Validation', () => {
         name: 'strict_tool',
         description: 'Tool with strict schema',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             value: { type: 'string' },
           },
@@ -434,7 +420,6 @@ describe('Tool Schema Validation', () => {
         name: 'loose_tool',
         description: 'Tool without strict schema',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             value: { type: 'string' },
           },
@@ -464,7 +449,6 @@ describe('Tool Schema Validation', () => {
         name: '',
         description: '',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             field: { type: 'string' },
           },

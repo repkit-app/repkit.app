@@ -81,7 +81,6 @@ describe('Error Handling and Edge Cases', () => {
         name: 'invalid_tool',
         description: 'Invalid',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             field1: { type: 'string' },
           },
@@ -98,7 +97,6 @@ describe('Error Handling and Edge Cases', () => {
         name: 'bad_types',
         description: 'Bad types',
         parameters: new ToolSchema({
-          type: 'object',
           properties: {
             field: { type: 'invalid_type' },
           },
@@ -149,7 +147,7 @@ describe('Error Handling and Edge Cases', () => {
         content: longContent,
       });
 
-      expect(msg.content.length).toBe(10000);
+      expect(msg.content!.length).toBe(10000);
     });
 
     it('should handle special characters in content', () => {
@@ -338,7 +336,7 @@ describe('Error Handling and Edge Cases', () => {
         content: 'a',
       });
 
-      expect(msg.content.length).toBe(1);
+      expect(msg.content!.length).toBe(1);
     });
 
     it('should handle single message conversation', () => {

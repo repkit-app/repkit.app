@@ -9,6 +9,7 @@ import {
   CreateChatCompletionRequest,
   ChatMessage,
   ChatMessage_Role,
+  ToolChoice,
 } from '@/lib/generated/repkit/ai/v1/api_pb';
 import {
   createAuthenticatedRequest,
@@ -157,10 +158,15 @@ describe('Chat Service Integration Tests', () => {
             content: 'Test',
           }),
         ],
-        toolChoice: 'auto',
+        toolChoice: new ToolChoice({
+          choice: {
+            case: 'stringChoice',
+            value: 'auto',
+          },
+        }),
       });
 
-      expect(req.toolChoice === 'auto' || req.toolChoice !== '').toBe(true);
+      expect(req.toolChoice).toBeDefined();
     });
   });
 
@@ -197,7 +203,6 @@ describe('Chat Service Integration Tests', () => {
     it('should handle tool calls in messages', () => {
       const msg = new ChatMessage({
         role: ChatMessage_Role.ASSISTANT,
-        content: null,
         toolCalls: [
           {
             id: 'call-123',
