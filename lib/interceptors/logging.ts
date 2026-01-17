@@ -67,7 +67,7 @@ export const loggingInterceptor: Interceptor = (next) => {
         if (usage) {
           const cachedTokens = usage.promptTokensDetails?.cachedTokens || 0;
           const cost = calculateCost(
-            method.includes('Mini') ? 'gpt-4o-mini' : 'gpt-5-mini',
+            method.includes('Mini') ? 'gpt-4o-mini' : 'gpt-5.2',
             usage.promptTokens || 0,
             usage.completionTokens || 0,
             cachedTokens
