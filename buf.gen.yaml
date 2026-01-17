@@ -12,3 +12,5 @@ plugins:
   # Generate Connect RPC service handlers and clients
   - remote: buf.build/connectrpc/es:v1.4.0
     out: lib/generated
+    opt:
+      - target=ts
