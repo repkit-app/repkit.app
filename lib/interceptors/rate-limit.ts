@@ -38,8 +38,9 @@ export const rateLimitInterceptor: Interceptor = (next) => {
 
     // Extract rate limit identifiers from request message using bracket notation
     // This avoids type casting and is type-safe
-    const deviceToken = typeof (req.message as any)['deviceToken'] === 'string'
-      ? String((req.message as any)['deviceToken'])
+    const msg = req.message as Record<string, unknown>;
+    const deviceToken = typeof msg['deviceToken'] === 'string'
+      ? String(msg['deviceToken'])
       : undefined;
 
     // Get client IP from request headers

@@ -52,4 +52,4 @@ worktrees/
 .claude-cache/
 
 # generated protobuf code
-lib/generated/proto/
+lib/generated/

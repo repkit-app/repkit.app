@@ -32,7 +32,7 @@ export const loggingInterceptor: Interceptor = (next) => {
     const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
     // Extract identifiers for logging (from request message and headers)
-    const msg = req.message as any;
+    const msg = req.message as Record<string, unknown>;
     const deviceToken = typeof msg['deviceToken'] === 'string' ? msg['deviceToken'] : undefined;
 
     // Extract client IP from request headers
@@ -50,8 +50,8 @@ export const loggingInterceptor: Interceptor = (next) => {
 
     // Extract request details
     const method = req.method.name;
-    const messages = (msg.messages || []).length;
-    const tools = (msg.tools || []).length;
+    const messages = Array.isArray(msg.messages) ? msg.messages.length : 0;
+    const tools = Array.isArray(msg.tools) ? msg.tools.length : 0;
 
     try {
       const response = await next(req);
@@ -61,15 +61,19 @@ export const loggingInterceptor: Interceptor = (next) => {
 
       if ('message' in response && !response.stream) {
         // Unary response - has usage metadata
-        const message = response.message as any;
-        const usage = message.usage;
+        const message = response.message as Record<string, unknown>;
+        const usage = message.usage as Record<string, unknown> | undefined;
 
-        if (usage) {
-          const cachedTokens = usage.promptTokensDetails?.cachedTokens || 0;
+        if (usage && typeof usage === 'object') {
+          const promptTokensDetails = (usage as { promptTokensDetails?: Record<string, unknown> }).promptTokensDetails;
+          const cachedTokens = (promptTokensDetails?.cachedTokens as number) || 0;
+          const promptTokens = (usage as { promptTokens?: number }).promptTokens || 0;
+          const completionTokens = (usage as { completionTokens?: number }).completionTokens || 0;
+
           const cost = calculateCost(
             method.includes('Mini') ? 'gpt-4o-mini' : 'gpt-5.2',
-            usage.promptTokens || 0,
-            usage.completionTokens || 0,
+            promptTokens,
+            completionTokens,
             cachedTokens
           );
 
