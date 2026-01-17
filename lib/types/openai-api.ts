@@ -63,7 +63,7 @@ export type OpenAIToolChoice =
  */
 export function isErrorWithStatus(error: unknown): error is Error & { status: number } {
   if (!(error instanceof Error)) return false;
-  return typeof (error as Record<PropertyKey, unknown>).status === 'number';
+  return typeof (error as unknown as Record<PropertyKey, unknown>).status === 'number';
 }
 
 /**
