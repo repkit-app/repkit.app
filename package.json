@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:hmac": "node scripts/dev/test-hmac.js",
-    "buf:generate": "buf generate",
-    "postinstall": "npm run buf:generate"
+    "buf:generate": "buf generate"
   },
   "dependencies": {
     "@connectrpc/connect": "^1.7.0",
