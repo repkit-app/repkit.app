@@ -178,7 +178,7 @@ function openAIToProtoResponse(
           finishReason: choice.finish_reason || '',
           message: {
             role: 'assistant',
-            content: choice.message.content,
+            content: choice.message.content ?? undefined,
             toolCalls: choice.message.tool_calls?.map((tc) => ({
               id: tc.id,
               type: 'function' as const,

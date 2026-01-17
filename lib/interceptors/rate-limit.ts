@@ -88,9 +88,7 @@ export const rateLimitInterceptor: Interceptor = (next) => {
       throw new ConnectError(
         `Rate limit exceeded: ${violated.limit} requests per hour. Retry after ${retryAfter}s`,
         Code.ResourceExhausted,
-        undefined,
-        undefined,
-        Object.entries(responseHeaders).map(([key, value]) => [key, value])
+        new Headers(Object.entries(responseHeaders))
       );
     }
 

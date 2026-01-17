@@ -136,7 +136,7 @@ export const loggingInterceptor: Interceptor = (next) => {
       const errorType =
         error instanceof Error ? error.constructor.name : 'Unknown';
 
-      // Log error
+      // Log error (logger.error internally calls Sentry.captureException)
       logger.error('API Request failed', error instanceof Error ? error : null, {
         requestId,
         method,
@@ -144,20 +144,9 @@ export const loggingInterceptor: Interceptor = (next) => {
         error: errorMessage,
         type: errorType,
         duration: `${duration}ms`,
-      });
-
-      // Capture error in Sentry (with sanitization)
-      Sentry.captureException(error, {
         tags: {
           endpoint: method,
           error_type: errorType,
-        },
-        extra: {
-          requestId,
-          duration_ms: duration,
-          messages,
-          tools,
-          // DO NOT include: deviceToken, ip, signature, request content
         },
         fingerprint: ['api-error', method, errorType],
       });

@@ -79,7 +79,7 @@ export function hasIdField(obj: unknown): obj is { id: string } {
 export interface OpenAIChatCompletionChoice {
   index: number;
   message: {
-    content: string;
+    content: string | null;
     tool_calls?: Array<{
       id: string;
       type: 'function';
@@ -125,7 +125,7 @@ export interface OpenAIChatCompletionChunkDelta {
   content?: string;
   tool_calls?: Array<{
     index: number;
-    id: string;
+    id?: string;
     type?: string;
     function?: {
       name?: string;
