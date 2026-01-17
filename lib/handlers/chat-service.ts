@@ -97,23 +97,26 @@ function protoToOpenAIToolChoice(toolChoice: unknown): OpenAIToolChoice | undefi
     }
   }
 
-  // Handle specific tool choice (structured)
+  // Handle specific tool choice (proto oneof with string_choice or function)
   const tc = toolChoice as Record<string, unknown>;
-  if (tc.stringChoice) {
-    const str = String(tc.stringChoice);
+
+  // Proto oneof uses "string_choice" field name (snake_case from proto)
+  if (tc.string_choice) {
+    const str = String(tc.string_choice);
     if (str === 'auto' || str === 'none' || str === 'required') {
       return str as OpenAIToolChoice;
     }
   }
 
-  // Handle function selection
+  // Proto oneof uses "function" field pointing to SpecificTool message
   if (tc.function && typeof tc.function === 'object') {
     const fn = tc.function as Record<string, unknown>;
-    if (fn.functionName) {
+    // SpecificTool has function_name field (snake_case from proto)
+    if (fn.function_name) {
       return {
         type: 'function' as const,
         function: {
-          name: String(fn.functionName),
+          name: String(fn.function_name),
         },
       };
     }

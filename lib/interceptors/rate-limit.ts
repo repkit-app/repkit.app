@@ -33,10 +33,8 @@ import { logger } from '@/lib/utils/logger';
  */
 export const rateLimitInterceptor: Interceptor = (next) => {
   return async (req) => {
-    // Only apply rate limiting to unary requests
-    if (req.stream) {
-      return await next(req);
-    }
+    // Apply rate limiting to both unary and streaming requests
+    // Streaming consumes bandwidth/resources same as unary, just over longer duration
 
     // Extract rate limit identifiers from request message using bracket notation
     // This avoids type casting and is type-safe
