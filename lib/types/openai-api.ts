@@ -62,10 +62,8 @@ export type OpenAIToolChoice =
  * Type guard to check if a value is an error with status property
  */
 export function isErrorWithStatus(error: unknown): error is Error & { status: number } {
-  return (
-    error instanceof Error &&
-    typeof (error as Record<string, unknown>).status === 'number'
-  );
+  if (!(error instanceof Error)) return false;
+  return typeof (error as Record<PropertyKey, unknown>).status === 'number';
 }
 
 /**
