@@ -3,6 +3,13 @@
  * Implements Connect RPC methods for AI chat completions
  */
 
+/**
+ * Streaming timeout configuration
+ * Prevents long-running streams from hanging indefinitely
+ * - 5 minute timeout for each stream (time between chunks)
+ */
+const STREAM_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 import { ConnectRouter, Code, ConnectError } from '@connectrpc/connect';
 import { ChatService } from '@/lib/generated/repkit/ai/v1/api_connect';
 import {
@@ -204,6 +211,64 @@ function openAIToProtoResponse(
 }
 
 /**
+ * Wraps an async generator with timeout detection
+ * Prevents streams from hanging indefinitely by enforcing a max duration between chunks
+ * If no chunk is received within timeoutMs, throws a timeout error
+ */
+async function* withStreamTimeout<T>(
+  stream: AsyncGenerator<T>,
+  timeoutMs: number
+): AsyncGenerator<T> {
+  const iterator = stream[Symbol.asyncIterator]();
+  let lastActivityTime = Date.now();
+
+  while (true) {
+    const timeElapsed = Date.now() - lastActivityTime;
+    const timeRemaining = timeoutMs - timeElapsed;
+
+    if (timeRemaining <= 0) {
+      throw new ConnectError(
+        'Stream timeout: no data received within 5 minutes',
+        Code.DeadlineExceeded
+      );
+    }
+
+    try {
+      // Create a timeout promise that rejects if no chunk arrives in time
+      const timeoutPromise = new Promise<IteratorResult<T>>((_, reject) => {
+        setTimeout(
+          () => reject(new ConnectError(
+            'Stream timeout: no data received within 5 minutes',
+            Code.DeadlineExceeded
+          )),
+          timeRemaining
+        );
+      });
+
+      // Race between getting the next chunk and the timeout
+      const result = await Promise.race([
+        iterator.next(),
+        timeoutPromise,
+      ]);
+
+      if (result.done) {
+        break;
+      }
+
+      lastActivityTime = Date.now();
+      yield result.value;
+    } catch (error) {
+      // Re-throw timeout errors
+      if (error instanceof ConnectError) {
+        throw error;
+      }
+      // For other errors, stop the stream
+      throw error;
+    }
+  }
+}
+
+/**
  * Validate and convert request for both unary and streaming handlers
  * Reduces duplication between handlers
  */
@@ -329,8 +394,11 @@ export function registerChatServiceHandlers(router: ConnectRouter) {
           tool_choice: validated.toolChoice,
         });
 
+        // Wrap stream with timeout detection (5 minute max between chunks)
+        const timedStream = withStreamTimeout(stream, STREAM_TIMEOUT_MS);
+
         // Iterate over stream and convert chunks to proto format
-        for await (const openaiChunk of stream) {
+        for await (const openaiChunk of timedStream) {
           const chunk = new ChatCompletionChunk({
             id: openaiChunk.id,
             model: openaiChunk.model,
