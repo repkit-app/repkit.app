@@ -959,5 +959,89 @@ describe('Tool Schema Validation', () => {
       const errors = validateToolSchema(tool);
       expect(errors).toHaveLength(0);
     });
+
+    it('should reject properties on non-object type', () => {
+      const tool = new Tool({
+        name: 'type_mismatch_tool',
+        description: 'Tool with type mismatch',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'string', // Wrong - has properties but type is string
+              properties: {
+                value: { type: 'string' },
+              },
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('has properties but type'))).toBe(true);
+      expect(errors.some((e) => e.includes('Expected "object"'))).toBe(true);
+    });
+
+    it('should reject items on non-array type', () => {
+      const tool = new Tool({
+        name: 'type_mismatch_tool',
+        description: 'Tool with items on non-array',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object', // Wrong - has items but type is object
+              items: {
+                type: 'string',
+              },
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('has items but type'))).toBe(true);
+      expect(errors.some((e) => e.includes('Expected "array"'))).toBe(true);
+    });
+
+    it('should reject required fields with empty properties', () => {
+      const tool = new Tool({
+        name: 'empty_props_tool',
+        description: 'Tool with required but no properties',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object',
+              properties: {}, // Empty properties
+              required: ['field1', 'field2'], // But has required fields
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('declares required fields but no properties are defined'))).toBe(true);
+    });
+
+    it('should reject required fields with missing properties', () => {
+      const tool = new Tool({
+        name: 'missing_props_tool',
+        description: 'Tool with required but undefined properties',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object',
+              // No properties defined at all
+              required: ['field1'],
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('declares required fields but no properties are defined'))).toBe(true);
+    });
   });
 });

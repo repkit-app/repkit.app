@@ -110,6 +110,13 @@ function validateProperty(
 
   // Validate nested object properties
   if (prop.properties && Object.keys(prop.properties).length > 0) {
+    // Enforce type: 'object' when properties are present
+    if (prop.type !== 'object') {
+      errors.push(
+        `Tool "${toolName}": property "${path}" has properties but type "${prop.type}". Expected "object".`
+      );
+    }
+
     // Check required fields exist in nested properties
     if (prop.required && prop.required.length > 0) {
       for (const requiredField of prop.required) {
@@ -126,10 +133,21 @@ function validateProperty(
     for (const [nestedName, nestedProp] of Object.entries(prop.properties)) {
       errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName, depth + 1, strictMode));
     }
+  } else if (prop.required && prop.required.length > 0) {
+    // Catch required fields with empty/missing properties
+    errors.push(
+      `Tool "${toolName}": property "${path}" declares required fields but no properties are defined`
+    );
   }
 
   // Validate array items
   if (prop.items) {
+    // Enforce type: 'array' when items is present
+    if (prop.type !== 'array') {
+      errors.push(
+        `Tool "${toolName}": property "${path}" has items but type "${prop.type}". Expected "array".`
+      );
+    }
     errors.push(...validateProperty(prop.items, `${path}.items`, toolName, depth + 1, strictMode));
   }
 
