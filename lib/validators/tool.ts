@@ -4,10 +4,12 @@
  *
  * Includes validation result caching to avoid repeated validation of identical tool sets.
  * Cache is keyed by a hash of the serialized tool definitions.
+ *
+ * Supports nested object and array schemas for OpenAI strict mode.
  */
 
 import { createHash } from 'crypto';
-import type { Tool } from '@/lib/generated/repkit/ai/v1/api_pb';
+import type { Tool, ToolSchema_Property } from '@/lib/generated/repkit/ai/v1/api_pb';
 
 /**
  * Cache for tool validation results
@@ -38,8 +40,63 @@ function getToolsHash(tools: Tool[]): string {
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
+ * Valid JSON Schema types
+ */
+const VALID_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+
+/**
+ * Validate a property and its nested structure recursively
+ *
+ * @param prop - Property to validate
+ * @param path - Path to the property for error messages (e.g., "parameters.workouts.items")
+ * @param toolName - Tool name for error context
+ * @returns Array of error messages
+ */
+function validateProperty(
+  prop: ToolSchema_Property,
+  path: string,
+  toolName: string
+): string[] {
+  const errors: string[] = [];
+
+  // Validate type
+  if (!prop.type || !VALID_TYPES.includes(prop.type)) {
+    errors.push(
+      `Tool "${toolName}": property "${path}" has invalid type "${prop.type}". Valid types: ${VALID_TYPES.join(', ')}`
+    );
+  }
+
+  // Validate nested object properties
+  if (prop.properties && Object.keys(prop.properties).length > 0) {
+    // Check required fields exist in nested properties
+    if (prop.required && prop.required.length > 0) {
+      for (const requiredField of prop.required) {
+        if (!prop.properties[requiredField]) {
+          errors.push(
+            `Tool "${toolName}": required field "${requiredField}" not found in "${path}.properties"`
+          );
+        }
+      }
+    }
+
+    // Recursively validate nested properties
+    for (const [nestedName, nestedProp] of Object.entries(prop.properties)) {
+      errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName));
+    }
+  }
+
+  // Validate array items
+  if (prop.items) {
+    errors.push(...validateProperty(prop.items, `${path}.items`, toolName));
+  }
+
+  return errors;
+}
+
+/**
  * Validate a single tool schema
  * Ensures required properties exist in properties map
+ * Recursively validates nested object and array schemas
  *
  * @param tool - Tool definition to validate
  * @returns Array of error messages (empty if valid)
@@ -74,7 +131,7 @@ export function validateToolSchema(tool: Tool): string[] {
     return errors;
   }
 
-  // Validate required array
+  // Validate required array at top level
   if (schema.required && schema.required.length > 0) {
     // Check each required field exists in properties
     for (const requiredField of schema.required) {
@@ -86,14 +143,9 @@ export function validateToolSchema(tool: Tool): string[] {
     }
   }
 
-  // Validate each property has valid type
-  const validTypes = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+  // Validate each property recursively (handles nested objects and arrays)
   for (const [propName, prop] of Object.entries(schema.properties)) {
-    if (!prop.type || !validTypes.includes(prop.type)) {
-      errors.push(
-        `Tool "${tool.name}": property "${propName}" has invalid type "${prop.type}". Valid types: ${validTypes.join(', ')}`
-      );
-    }
+    errors.push(...validateProperty(prop, propName, tool.name));
   }
 
   return errors;

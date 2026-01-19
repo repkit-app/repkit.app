@@ -460,4 +460,278 @@ describe('Tool Schema Validation', () => {
       expect(errors.length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  describe('Nested Schema Validation', () => {
+    it('should validate nested object with required fields', () => {
+      const tool = new Tool({
+        name: 'create_workout',
+        description: 'Create a workout',
+        parameters: new ToolSchema({
+          properties: {
+            workout: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                duration: { type: 'number' },
+              },
+              required: ['name', 'duration'],
+            },
+          },
+          required: ['workout'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject nested object with invalid required field', () => {
+      const tool = new Tool({
+        name: 'create_workout',
+        description: 'Create a workout',
+        parameters: new ToolSchema({
+          properties: {
+            workout: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+              required: ['name', 'missing_field'],
+            },
+          },
+          required: ['workout'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('missing_field'))).toBe(true);
+    });
+
+    it('should validate array with items schema', () => {
+      const tool = new Tool({
+        name: 'create_program',
+        description: 'Create a program',
+        parameters: new ToolSchema({
+          properties: {
+            workouts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  sets: { type: 'number' },
+                },
+                required: ['name'],
+              },
+            },
+          },
+          required: ['workouts'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should validate array with simple items type', () => {
+      const tool = new Tool({
+        name: 'add_tags',
+        description: 'Add tags to item',
+        parameters: new ToolSchema({
+          properties: {
+            tags: {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+            },
+          },
+          required: ['tags'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject array items with invalid type', () => {
+      const tool = new Tool({
+        name: 'create_program',
+        description: 'Create a program',
+        parameters: new ToolSchema({
+          properties: {
+            workouts: {
+              type: 'array',
+              items: {
+                type: 'invalid_type',
+              },
+            },
+          },
+          required: ['workouts'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('invalid type'))).toBe(true);
+    });
+
+    it('should validate deep nesting (3+ levels)', () => {
+      const tool = new Tool({
+        name: 'create_training_plan',
+        description: 'Create a complete training plan',
+        parameters: new ToolSchema({
+          properties: {
+            plan: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                weeks: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      weekNumber: { type: 'number' },
+                      days: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            dayName: { type: 'string' },
+                            exercises: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  name: { type: 'string' },
+                                  sets: { type: 'number' },
+                                  reps: { type: 'number' },
+                                },
+                                required: ['name', 'sets', 'reps'],
+                              },
+                            },
+                          },
+                          required: ['dayName'],
+                        },
+                      },
+                    },
+                    required: ['weekNumber', 'days'],
+                  },
+                },
+              },
+              required: ['name', 'weeks'],
+            },
+          },
+          required: ['plan'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should catch invalid required at any nesting level', () => {
+      const tool = new Tool({
+        name: 'create_program',
+        description: 'Create a program',
+        parameters: new ToolSchema({
+          properties: {
+            plan: {
+              type: 'object',
+              properties: {
+                weeks: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                    },
+                    required: ['name', 'deeply_nested_missing'],
+                  },
+                },
+              },
+              required: ['weeks'],
+            },
+          },
+          required: ['plan'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('deeply_nested_missing'))).toBe(true);
+    });
+
+    it('should validate tool with additionalProperties flag', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with strict mode',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          },
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should validate real-world program_create_program schema', () => {
+      // This mirrors the actual schema from the iOS client that was failing
+      const tool = new Tool({
+        name: 'program_create_program',
+        description: 'Create a training program with workouts',
+        parameters: new ToolSchema({
+          properties: {
+            name: { type: 'string', description: 'Program name' },
+            description: { type: 'string', description: 'Program description' },
+            workouts: {
+              type: 'array',
+              description: 'List of workouts in the program',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Workout name' },
+                  dayOfWeek: { type: 'integer', description: 'Day of week (1-7)' },
+                  exercises: {
+                    type: 'array',
+                    description: 'Exercises in the workout',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        exerciseId: { type: 'string', description: 'Exercise ID' },
+                        sets: { type: 'integer', description: 'Number of sets' },
+                        reps: { type: 'integer', description: 'Reps per set' },
+                        weight: { type: 'number', description: 'Weight in lbs' },
+                      },
+                      required: ['exerciseId', 'sets', 'reps'],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ['name', 'exercises'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['name', 'workouts'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+  });
 });
