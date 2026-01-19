@@ -399,7 +399,7 @@ describe('Tool Schema Validation', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('should accept tools with strict mode enabled', () => {
+    it('should accept tools with strict mode enabled when properly configured', () => {
       const tool = new Tool({
         name: 'strict_tool',
         description: 'Tool with strict schema',
@@ -407,6 +407,8 @@ describe('Tool Schema Validation', () => {
           properties: {
             value: { type: 'string' },
           },
+          required: ['value'],
+          additionalProperties: false,
         }),
         strict: true,
       });
@@ -674,12 +676,188 @@ describe('Tool Schema Validation', () => {
               properties: {
                 value: { type: 'string' },
               },
+              required: ['value'],
               additionalProperties: false,
             },
           },
+          required: ['data'],
           additionalProperties: false,
         }),
         strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject strict mode without additionalProperties at top level', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool missing additionalProperties',
+        parameters: new ToolSchema({
+          properties: {
+            value: { type: 'string' },
+          },
+          required: ['value'],
+          // Missing additionalProperties: false
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('additionalProperties'))).toBe(true);
+    });
+
+    it('should reject strict mode with missing properties in required array', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with incomplete required array',
+        parameters: new ToolSchema({
+          properties: {
+            field1: { type: 'string' },
+            field2: { type: 'number' },
+          },
+          required: ['field1'], // Missing field2
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('field2'))).toBe(true);
+    });
+
+    it('should reject strict mode without additionalProperties on nested objects', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with incomplete nested object',
+        parameters: new ToolSchema({
+          properties: {
+            nested: {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+              },
+              required: ['value'],
+              // Missing additionalProperties: false
+            },
+          },
+          required: ['nested'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('additionalProperties'))).toBe(true);
+      expect(errors.some((e) => e.includes('nested'))).toBe(true);
+    });
+
+    it('should reject strict mode with missing required on nested objects', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with incomplete nested required',
+        parameters: new ToolSchema({
+          properties: {
+            nested: {
+              type: 'object',
+              properties: {
+                field1: { type: 'string' },
+                field2: { type: 'number' },
+              },
+              required: ['field1'], // Missing field2
+              additionalProperties: false,
+            },
+          },
+          required: ['nested'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('field2'))).toBe(true);
+    });
+
+    it('should validate strict mode on deeply nested array items', () => {
+      const tool = new Tool({
+        name: 'strict_deep_tool',
+        description: 'Tool with deeply nested strict validation',
+        parameters: new ToolSchema({
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  nested: {
+                    type: 'object',
+                    properties: {
+                      value: { type: 'string' },
+                    },
+                    required: ['value'],
+                    additionalProperties: false,
+                  },
+                },
+                required: ['nested'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['items'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject strict mode with missing additionalProperties on array item objects', () => {
+      const tool = new Tool({
+        name: 'strict_array_tool',
+        description: 'Tool with array items missing additionalProperties',
+        parameters: new ToolSchema({
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  value: { type: 'string' },
+                },
+                required: ['value'],
+                // Missing additionalProperties: false on array items
+              },
+            },
+          },
+          required: ['items'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('additionalProperties'))).toBe(true);
+    });
+
+    it('should allow non-strict tools without additionalProperties', () => {
+      const tool = new Tool({
+        name: 'loose_tool',
+        description: 'Tool without strict mode',
+        parameters: new ToolSchema({
+          properties: {
+            value: { type: 'string' },
+          },
+          // No required, no additionalProperties - valid for non-strict
+        }),
+        strict: false,
       });
 
       const errors = validateToolSchema(tool);
@@ -735,6 +913,7 @@ describe('Tool Schema Validation', () => {
 
     it('should validate real-world program_create_program schema', () => {
       // This mirrors the actual schema from the iOS client that was failing
+      // For strict mode, ALL properties must be in required array
       const tool = new Tool({
         name: 'program_create_program',
         description: 'Create a training program with workouts',
@@ -761,17 +940,17 @@ describe('Tool Schema Validation', () => {
                         reps: { type: 'integer', description: 'Reps per set' },
                         weight: { type: 'number', description: 'Weight in lbs' },
                       },
-                      required: ['exerciseId', 'sets', 'reps'],
+                      required: ['exerciseId', 'sets', 'reps', 'weight'],
                       additionalProperties: false,
                     },
                   },
                 },
-                required: ['name', 'exercises'],
+                required: ['name', 'dayOfWeek', 'exercises'],
                 additionalProperties: false,
               },
             },
           },
-          required: ['name', 'workouts'],
+          required: ['name', 'description', 'workouts'],
           additionalProperties: false,
         }),
         strict: true,

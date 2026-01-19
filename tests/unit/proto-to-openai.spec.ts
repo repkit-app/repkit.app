@@ -361,6 +361,26 @@ describe('Proto to OpenAI Conversion', () => {
 
       expect(() => convertProperty(prop, 0)).toThrow('maximum depth');
     });
+
+    it('should throw error for invalid property type', () => {
+      const prop = new ToolSchema_Property({
+        type: 'invalid_type',
+        description: 'Invalid property',
+      });
+
+      expect(() => convertProperty(prop, 0)).toThrow('Invalid property type');
+      expect(() => convertProperty(prop, 0)).toThrow('invalid_type');
+    });
+
+    it('should accept all valid property types', () => {
+      const validTypes = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+
+      for (const type of validTypes) {
+        const prop = new ToolSchema_Property({ type });
+        expect(() => convertProperty(prop, 0)).not.toThrow();
+        expect(convertProperty(prop, 0).type).toBe(type);
+      }
+    });
   });
 
   describe('convertProperties', () => {

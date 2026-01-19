@@ -16,6 +16,23 @@ import type { OpenAITool, OpenAIToolProperty } from '@/lib/types/openai-api';
 const MAX_SCHEMA_DEPTH = 10;
 
 /**
+ * Valid JSON Schema types for OpenAI tools
+ */
+const VALID_PROPERTY_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'] as const;
+type ValidPropertyType = typeof VALID_PROPERTY_TYPES[number];
+
+/**
+ * Type guard to check if a value is a valid OpenAI property type
+ * Validates at runtime instead of using unsafe type assertions
+ *
+ * @param value - Value to check
+ * @returns True if value is a valid property type
+ */
+function isValidPropertyType(value: unknown): value is ValidPropertyType {
+  return typeof value === 'string' && VALID_PROPERTY_TYPES.includes(value as ValidPropertyType);
+}
+
+/**
  * Convert a single proto Property to OpenAI property format
  * Recursively handles nested objects and arrays with depth limiting
  *
@@ -35,8 +52,15 @@ export function convertProperty(
     );
   }
 
+  // Validate type at runtime for safety
+  if (!isValidPropertyType(prop.type)) {
+    throw new Error(
+      `Invalid property type "${prop.type}". Valid types: ${VALID_PROPERTY_TYPES.join(', ')}`
+    );
+  }
+
   const result: OpenAIToolProperty = {
-    type: prop.type as 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object',
+    type: prop.type,
     description: prop.description,
     enum: prop.enum && prop.enum.length > 0 ? prop.enum : undefined,
   };

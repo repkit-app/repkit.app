@@ -57,13 +57,15 @@ const MAX_SCHEMA_DEPTH = 10;
  * @param path - Path to the property for error messages (e.g., "parameters.workouts.items")
  * @param toolName - Tool name for error context
  * @param depth - Current recursion depth for safety limits
+ * @param strictMode - Whether strict mode validation is enabled
  * @returns Array of error messages
  */
 function validateProperty(
   prop: ToolSchema_Property,
   path: string,
   toolName: string,
-  depth: number = 0
+  depth: number = 0,
+  strictMode: boolean = false
 ): string[] {
   const errors: string[] = [];
 
@@ -82,6 +84,30 @@ function validateProperty(
     );
   }
 
+  // Strict mode validation for objects
+  if (strictMode && prop.type === 'object') {
+    // In strict mode, all objects must have additionalProperties: false
+    if (prop.additionalProperties !== false) {
+      errors.push(
+        `Tool "${toolName}": strict mode requires additionalProperties: false at "${path}"`
+      );
+    }
+
+    // In strict mode, all properties must be in the required array
+    if (prop.properties && Object.keys(prop.properties).length > 0) {
+      const propNames = Object.keys(prop.properties);
+      const requiredFields = prop.required || [];
+      const missingRequired = propNames.filter(name => !requiredFields.includes(name));
+
+      if (missingRequired.length > 0) {
+        errors.push(
+          `Tool "${toolName}": strict mode requires all properties to be in required array at "${path}". ` +
+          `Missing: ${missingRequired.join(', ')}`
+        );
+      }
+    }
+  }
+
   // Validate nested object properties
   if (prop.properties && Object.keys(prop.properties).length > 0) {
     // Check required fields exist in nested properties
@@ -98,13 +124,13 @@ function validateProperty(
 
     // Recursively validate nested properties
     for (const [nestedName, nestedProp] of Object.entries(prop.properties)) {
-      errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName, depth + 1));
+      errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName, depth + 1, strictMode));
     }
   }
 
   // Validate array items
   if (prop.items) {
-    errors.push(...validateProperty(prop.items, `${path}.items`, toolName, depth + 1));
+    errors.push(...validateProperty(prop.items, `${path}.items`, toolName, depth + 1, strictMode));
   }
 
   return errors;
@@ -160,9 +186,32 @@ export function validateToolSchema(tool: Tool): string[] {
     }
   }
 
+  // Validate strict mode requirements at top level
+  const strictMode = tool.strict === true;
+  if (strictMode) {
+    // Top-level must have additionalProperties: false
+    if (schema.additionalProperties !== false) {
+      errors.push(
+        `Tool "${tool.name}": strict mode requires additionalProperties: false at top level`
+      );
+    }
+
+    // All top-level properties must be in required array
+    const propNames = Object.keys(schema.properties);
+    const requiredFields = schema.required || [];
+    const missingRequired = propNames.filter(name => !requiredFields.includes(name));
+
+    if (missingRequired.length > 0) {
+      errors.push(
+        `Tool "${tool.name}": strict mode requires all properties to be in required array. ` +
+        `Missing: ${missingRequired.join(', ')}`
+      );
+    }
+  }
+
   // Validate each property recursively (handles nested objects and arrays)
   for (const [propName, prop] of Object.entries(schema.properties)) {
-    errors.push(...validateProperty(prop, propName, tool.name));
+    errors.push(...validateProperty(prop, propName, tool.name, 0, strictMode));
   }
 
   return errors;
