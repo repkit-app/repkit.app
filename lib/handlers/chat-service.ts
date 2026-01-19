@@ -23,7 +23,6 @@ import {
   ChatMessage_Role,
   ToolCall,
   Tool,
-  ToolSchema_Property,
   Usage,
   PromptTokenDetails,
 } from '@/lib/generated/repkit/ai/v1/api_pb';
@@ -36,92 +35,10 @@ import { validateTools } from '@/lib/validators/tool';
 import {
   type OpenAITool,
   type OpenAIToolChoice,
-  type OpenAIToolProperty,
   type OpenAIChatCompletionResponse,
   isErrorWithStatus,
 } from '@/lib/types/openai-api';
-
-/**
- * Convert proto Tool to OpenAI Tool format
- * OpenAI requires parameters, so tools without them are invalid
- * Supports nested object and array schemas for OpenAI strict mode
- */
-function protoToOpenAITool(tool: InstanceType<typeof Tool>): OpenAITool {
-  /**
-   * Convert a single proto Property to OpenAI property format
-   * Recursively handles nested objects and arrays
-   */
-  const convertProperty = (
-    prop: InstanceType<typeof ToolSchema_Property>
-  ): OpenAIToolProperty => {
-    const result: OpenAIToolProperty = {
-      type: prop.type as 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object',
-      description: prop.description,
-      enum: prop.enum && prop.enum.length > 0 ? prop.enum : undefined,
-    };
-
-    // Handle nested object properties
-    if (prop.properties && Object.keys(prop.properties).length > 0) {
-      result.properties = convertProperties(prop.properties);
-      if (prop.required && prop.required.length > 0) {
-        result.required = prop.required;
-      }
-    }
-
-    // Handle array items
-    if (prop.items) {
-      result.items = convertProperty(prop.items);
-    }
-
-    // Handle additionalProperties for strict mode
-    if (prop.additionalProperties !== undefined) {
-      result.additionalProperties = prop.additionalProperties;
-    }
-
-    return result;
-  };
-
-  /**
-   * Convert proto properties map to OpenAI properties
-   */
-  const convertProperties = (
-    protoProps: Record<string, InstanceType<typeof ToolSchema_Property>> | undefined
-  ): Record<string, OpenAIToolProperty> => {
-    if (!protoProps) return {};
-
-    const result: Record<string, OpenAIToolProperty> = {};
-    for (const [key, prop] of Object.entries(protoProps)) {
-      result[key] = convertProperty(prop);
-    }
-    return result;
-  };
-
-  // Parameters are required by OpenAI - validated during request processing
-  const parameters = tool.parameters
-    ? {
-        type: 'object' as const,
-        properties: convertProperties(tool.parameters.properties),
-        required: tool.parameters.required || [],
-        // Include additionalProperties at schema level for strict mode
-        ...(tool.parameters.additionalProperties !== undefined && {
-          additionalProperties: tool.parameters.additionalProperties,
-        }),
-      }
-    : {
-        type: 'object' as const,
-        properties: {},
-      };
-
-  return {
-    type: 'function' as const,
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters,
-      strict: tool.strict || false,
-    },
-  };
-}
+import { protoToOpenAITool } from '@/lib/converters/proto-to-openai';
 
 /**
  * Convert proto ToolChoice to OpenAI ToolChoice format

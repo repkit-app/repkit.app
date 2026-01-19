@@ -5,13 +5,23 @@
 
 /**
  * Tool parameter definition in OpenAI JSON Schema format
- * Supports additional properties for extensibility
+ * Supports nested objects and arrays for strict mode
+ *
+ * Note: Index signature required for OpenAI SDK compatibility
  */
 export interface OpenAIToolProperty {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
   description?: string;
   enum?: string[];
-  [key: string]: unknown; // Allow additional JSON Schema properties
+  // Nested object support
+  properties?: Record<string, OpenAIToolProperty>;
+  required?: string[];
+  // Array support
+  items?: OpenAIToolProperty;
+  // Strict mode support
+  additionalProperties?: boolean;
+  // Index signature for OpenAI SDK compatibility
+  [key: string]: unknown;
 }
 
 /**

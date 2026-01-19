@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Tool, ToolSchema } from '@/lib/generated/repkit/ai/v1/api_pb';
+import { Tool, ToolSchema, ToolSchema_Property } from '@/lib/generated/repkit/ai/v1/api_pb';
 import { validateTools, validateToolSchema, isTool } from '@/lib/validators/tool';
 
 describe('Tool Schema Validation', () => {
@@ -684,6 +684,53 @@ describe('Tool Schema Validation', () => {
 
       const errors = validateToolSchema(tool);
       expect(errors).toHaveLength(0);
+    });
+
+    it('should reject schemas exceeding max depth', () => {
+      // Create a deeply nested property using proper proto types
+      let deepProp = new ToolSchema_Property({ type: 'string' });
+
+      for (let i = 0; i < 15; i++) {
+        deepProp = new ToolSchema_Property({
+          type: 'object',
+          properties: { nested: deepProp },
+        });
+      }
+
+      const tool = new Tool({
+        name: 'deep_tool',
+        description: 'Tool with deep nesting',
+        parameters: new ToolSchema({
+          properties: { deep: deepProp },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('maximum nesting depth'))).toBe(true);
+    });
+
+    it('should show available properties when required field is missing', () => {
+      const tool = new Tool({
+        name: 'test_tool',
+        description: 'Test',
+        parameters: new ToolSchema({
+          properties: {
+            nested: {
+              type: 'object',
+              properties: {
+                fieldA: { type: 'string' },
+                fieldB: { type: 'number' },
+              },
+              required: ['fieldA', 'missing_field'],
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.some((e) => e.includes('Available:'))).toBe(true);
+      expect(errors.some((e) => e.includes('fieldA'))).toBe(true);
     });
 
     it('should validate real-world program_create_program schema', () => {

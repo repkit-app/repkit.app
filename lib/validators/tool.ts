@@ -45,19 +45,35 @@ const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const VALID_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
 
 /**
+ * Maximum nesting depth for tool schemas
+ * Prevents stack overflow from malformed or malicious schemas
+ */
+const MAX_SCHEMA_DEPTH = 10;
+
+/**
  * Validate a property and its nested structure recursively
  *
  * @param prop - Property to validate
  * @param path - Path to the property for error messages (e.g., "parameters.workouts.items")
  * @param toolName - Tool name for error context
+ * @param depth - Current recursion depth for safety limits
  * @returns Array of error messages
  */
 function validateProperty(
   prop: ToolSchema_Property,
   path: string,
-  toolName: string
+  toolName: string,
+  depth: number = 0
 ): string[] {
   const errors: string[] = [];
+
+  // Check depth limit
+  if (depth > MAX_SCHEMA_DEPTH) {
+    errors.push(
+      `Tool "${toolName}": schema at "${path}" exceeds maximum nesting depth of ${MAX_SCHEMA_DEPTH}`
+    );
+    return errors;
+  }
 
   // Validate type
   if (!prop.type || !VALID_TYPES.includes(prop.type)) {
@@ -73,7 +89,8 @@ function validateProperty(
       for (const requiredField of prop.required) {
         if (!prop.properties[requiredField]) {
           errors.push(
-            `Tool "${toolName}": required field "${requiredField}" not found in "${path}.properties"`
+            `Tool "${toolName}": required field "${requiredField}" not found in "${path}.properties". ` +
+            `Available: ${Object.keys(prop.properties).join(', ')}`
           );
         }
       }
@@ -81,13 +98,13 @@ function validateProperty(
 
     // Recursively validate nested properties
     for (const [nestedName, nestedProp] of Object.entries(prop.properties)) {
-      errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName));
+      errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName, depth + 1));
     }
   }
 
   // Validate array items
   if (prop.items) {
-    errors.push(...validateProperty(prop.items, `${path}.items`, toolName));
+    errors.push(...validateProperty(prop.items, `${path}.items`, toolName, depth + 1));
   }
 
   return errors;
