@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Tool, ToolSchema } from '@/lib/generated/repkit/ai/v1/api_pb';
+import { Tool, ToolSchema, ToolSchema_Property } from '@/lib/generated/repkit/ai/v1/api_pb';
 import { validateTools, validateToolSchema, isTool } from '@/lib/validators/tool';
 
 describe('Tool Schema Validation', () => {
@@ -291,6 +291,43 @@ describe('Tool Schema Validation', () => {
       // Should have at least 2 errors (from tools at index 2 and 3)
       expect(errors.length).toBeGreaterThanOrEqual(1);
     });
+
+    it('should differentiate cache by strict mode flag', () => {
+      // Same tool definition but one with strict: true, one with strict: false
+      // Should not return cached result from non-strict when strict is true
+      const nonStrictTool = new Tool({
+        name: 'test_tool',
+        description: 'Test tool',
+        parameters: new ToolSchema({
+          properties: {
+            data: new ToolSchema_Property({ type: 'string' }),
+          },
+          // Missing additionalProperties: false - valid for non-strict
+        }),
+        strict: false,
+      });
+
+      const strictTool = new Tool({
+        name: 'test_tool',
+        description: 'Test tool',
+        parameters: new ToolSchema({
+          properties: {
+            data: new ToolSchema_Property({ type: 'string' }),
+          },
+          // Missing additionalProperties: false - invalid for strict
+        }),
+        strict: true,
+      });
+
+      // Non-strict should pass
+      const nonStrictErrors = validateTools([nonStrictTool]);
+      expect(nonStrictErrors).toHaveLength(0);
+
+      // Strict should fail with additionalProperties error (not return cached result)
+      const strictErrors = validateTools([strictTool]);
+      expect(strictErrors.length).toBeGreaterThan(0);
+      expect(strictErrors.some((e) => e.includes('additionalProperties'))).toBe(true);
+    });
   });
 
   describe('isTool Type Guard', () => {
@@ -399,7 +436,7 @@ describe('Tool Schema Validation', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('should accept tools with strict mode enabled', () => {
+    it('should accept tools with strict mode enabled when properly configured', () => {
       const tool = new Tool({
         name: 'strict_tool',
         description: 'Tool with strict schema',
@@ -407,6 +444,8 @@ describe('Tool Schema Validation', () => {
           properties: {
             value: { type: 'string' },
           },
+          required: ['value'],
+          additionalProperties: false,
         }),
         strict: true,
       });
@@ -458,6 +497,588 @@ describe('Tool Schema Validation', () => {
 
       const errors = validateToolSchema(tool);
       expect(errors.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('Nested Schema Validation', () => {
+    it('should validate nested object with required fields', () => {
+      const tool = new Tool({
+        name: 'create_workout',
+        description: 'Create a workout',
+        parameters: new ToolSchema({
+          properties: {
+            workout: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                duration: { type: 'number' },
+              },
+              required: ['name', 'duration'],
+            },
+          },
+          required: ['workout'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject nested object with invalid required field', () => {
+      const tool = new Tool({
+        name: 'create_workout',
+        description: 'Create a workout',
+        parameters: new ToolSchema({
+          properties: {
+            workout: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+              required: ['name', 'missing_field'],
+            },
+          },
+          required: ['workout'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('missing_field'))).toBe(true);
+    });
+
+    it('should validate array with items schema', () => {
+      const tool = new Tool({
+        name: 'create_program',
+        description: 'Create a program',
+        parameters: new ToolSchema({
+          properties: {
+            workouts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  sets: { type: 'number' },
+                },
+                required: ['name'],
+              },
+            },
+          },
+          required: ['workouts'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should validate array with simple items type', () => {
+      const tool = new Tool({
+        name: 'add_tags',
+        description: 'Add tags to item',
+        parameters: new ToolSchema({
+          properties: {
+            tags: {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+            },
+          },
+          required: ['tags'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject array items with invalid type', () => {
+      const tool = new Tool({
+        name: 'create_program',
+        description: 'Create a program',
+        parameters: new ToolSchema({
+          properties: {
+            workouts: {
+              type: 'array',
+              items: {
+                type: 'invalid_type',
+              },
+            },
+          },
+          required: ['workouts'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('invalid type'))).toBe(true);
+    });
+
+    it('should validate deep nesting (3+ levels)', () => {
+      const tool = new Tool({
+        name: 'create_training_plan',
+        description: 'Create a complete training plan',
+        parameters: new ToolSchema({
+          properties: {
+            plan: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                weeks: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      weekNumber: { type: 'number' },
+                      days: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            dayName: { type: 'string' },
+                            exercises: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  name: { type: 'string' },
+                                  sets: { type: 'number' },
+                                  reps: { type: 'number' },
+                                },
+                                required: ['name', 'sets', 'reps'],
+                              },
+                            },
+                          },
+                          required: ['dayName'],
+                        },
+                      },
+                    },
+                    required: ['weekNumber', 'days'],
+                  },
+                },
+              },
+              required: ['name', 'weeks'],
+            },
+          },
+          required: ['plan'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should catch invalid required at any nesting level', () => {
+      const tool = new Tool({
+        name: 'create_program',
+        description: 'Create a program',
+        parameters: new ToolSchema({
+          properties: {
+            plan: {
+              type: 'object',
+              properties: {
+                weeks: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                    },
+                    required: ['name', 'deeply_nested_missing'],
+                  },
+                },
+              },
+              required: ['weeks'],
+            },
+          },
+          required: ['plan'],
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('deeply_nested_missing'))).toBe(true);
+    });
+
+    it('should validate tool with additionalProperties flag', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with strict mode',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+              },
+              required: ['value'],
+              additionalProperties: false,
+            },
+          },
+          required: ['data'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject strict mode without additionalProperties at top level', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool missing additionalProperties',
+        parameters: new ToolSchema({
+          properties: {
+            value: { type: 'string' },
+          },
+          required: ['value'],
+          // Missing additionalProperties: false
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('additionalProperties'))).toBe(true);
+    });
+
+    it('should reject strict mode with missing properties in required array', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with incomplete required array',
+        parameters: new ToolSchema({
+          properties: {
+            field1: { type: 'string' },
+            field2: { type: 'number' },
+          },
+          required: ['field1'], // Missing field2
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('field2'))).toBe(true);
+    });
+
+    it('should reject strict mode without additionalProperties on nested objects', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with incomplete nested object',
+        parameters: new ToolSchema({
+          properties: {
+            nested: {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+              },
+              required: ['value'],
+              // Missing additionalProperties: false
+            },
+          },
+          required: ['nested'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('additionalProperties'))).toBe(true);
+      expect(errors.some((e) => e.includes('nested'))).toBe(true);
+    });
+
+    it('should reject strict mode with missing required on nested objects', () => {
+      const tool = new Tool({
+        name: 'strict_tool',
+        description: 'Tool with incomplete nested required',
+        parameters: new ToolSchema({
+          properties: {
+            nested: {
+              type: 'object',
+              properties: {
+                field1: { type: 'string' },
+                field2: { type: 'number' },
+              },
+              required: ['field1'], // Missing field2
+              additionalProperties: false,
+            },
+          },
+          required: ['nested'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('field2'))).toBe(true);
+    });
+
+    it('should validate strict mode on deeply nested array items', () => {
+      const tool = new Tool({
+        name: 'strict_deep_tool',
+        description: 'Tool with deeply nested strict validation',
+        parameters: new ToolSchema({
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  nested: {
+                    type: 'object',
+                    properties: {
+                      value: { type: 'string' },
+                    },
+                    required: ['value'],
+                    additionalProperties: false,
+                  },
+                },
+                required: ['nested'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['items'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject strict mode with missing additionalProperties on array item objects', () => {
+      const tool = new Tool({
+        name: 'strict_array_tool',
+        description: 'Tool with array items missing additionalProperties',
+        parameters: new ToolSchema({
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  value: { type: 'string' },
+                },
+                required: ['value'],
+                // Missing additionalProperties: false on array items
+              },
+            },
+          },
+          required: ['items'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('additionalProperties'))).toBe(true);
+    });
+
+    it('should allow non-strict tools without additionalProperties', () => {
+      const tool = new Tool({
+        name: 'loose_tool',
+        description: 'Tool without strict mode',
+        parameters: new ToolSchema({
+          properties: {
+            value: { type: 'string' },
+          },
+          // No required, no additionalProperties - valid for non-strict
+        }),
+        strict: false,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject schemas exceeding max depth', () => {
+      // Create a deeply nested property using proper proto types
+      let deepProp = new ToolSchema_Property({ type: 'string' });
+
+      for (let i = 0; i < 15; i++) {
+        deepProp = new ToolSchema_Property({
+          type: 'object',
+          properties: { nested: deepProp },
+        });
+      }
+
+      const tool = new Tool({
+        name: 'deep_tool',
+        description: 'Tool with deep nesting',
+        parameters: new ToolSchema({
+          properties: { deep: deepProp },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('maximum nesting depth'))).toBe(true);
+    });
+
+    it('should show available properties when required field is missing', () => {
+      const tool = new Tool({
+        name: 'test_tool',
+        description: 'Test',
+        parameters: new ToolSchema({
+          properties: {
+            nested: {
+              type: 'object',
+              properties: {
+                fieldA: { type: 'string' },
+                fieldB: { type: 'number' },
+              },
+              required: ['fieldA', 'missing_field'],
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.some((e) => e.includes('Available:'))).toBe(true);
+      expect(errors.some((e) => e.includes('fieldA'))).toBe(true);
+    });
+
+    it('should validate real-world program_create_program schema', () => {
+      // This mirrors the actual schema from the iOS client that was failing
+      // For strict mode, ALL properties must be in required array
+      const tool = new Tool({
+        name: 'program_create_program',
+        description: 'Create a training program with workouts',
+        parameters: new ToolSchema({
+          properties: {
+            name: { type: 'string', description: 'Program name' },
+            description: { type: 'string', description: 'Program description' },
+            workouts: {
+              type: 'array',
+              description: 'List of workouts in the program',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Workout name' },
+                  dayOfWeek: { type: 'integer', description: 'Day of week (1-7)' },
+                  exercises: {
+                    type: 'array',
+                    description: 'Exercises in the workout',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        exerciseId: { type: 'string', description: 'Exercise ID' },
+                        sets: { type: 'integer', description: 'Number of sets' },
+                        reps: { type: 'integer', description: 'Reps per set' },
+                        weight: { type: 'number', description: 'Weight in lbs' },
+                      },
+                      required: ['exerciseId', 'sets', 'reps', 'weight'],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ['name', 'dayOfWeek', 'exercises'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['name', 'description', 'workouts'],
+          additionalProperties: false,
+        }),
+        strict: true,
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject properties on non-object type', () => {
+      const tool = new Tool({
+        name: 'type_mismatch_tool',
+        description: 'Tool with type mismatch',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'string', // Wrong - has properties but type is string
+              properties: {
+                value: { type: 'string' },
+              },
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('has properties but type'))).toBe(true);
+      expect(errors.some((e) => e.includes('Expected "object"'))).toBe(true);
+    });
+
+    it('should reject items on non-array type', () => {
+      const tool = new Tool({
+        name: 'type_mismatch_tool',
+        description: 'Tool with items on non-array',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object', // Wrong - has items but type is object
+              items: {
+                type: 'string',
+              },
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('has items but type'))).toBe(true);
+      expect(errors.some((e) => e.includes('Expected "array"'))).toBe(true);
+    });
+
+    it('should reject required fields with empty properties', () => {
+      const tool = new Tool({
+        name: 'empty_props_tool',
+        description: 'Tool with required but no properties',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object',
+              properties: {}, // Empty properties
+              required: ['field1', 'field2'], // But has required fields
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('declares required fields but no properties are defined'))).toBe(true);
+    });
+
+    it('should reject required fields with missing properties', () => {
+      const tool = new Tool({
+        name: 'missing_props_tool',
+        description: 'Tool with required but undefined properties',
+        parameters: new ToolSchema({
+          properties: {
+            data: {
+              type: 'object',
+              // No properties defined at all
+              required: ['field1'],
+            },
+          },
+        }),
+      });
+
+      const errors = validateToolSchema(tool);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.includes('declares required fields but no properties are defined'))).toBe(true);
     });
   });
 });

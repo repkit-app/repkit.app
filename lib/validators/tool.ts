@@ -4,10 +4,12 @@
  *
  * Includes validation result caching to avoid repeated validation of identical tool sets.
  * Cache is keyed by a hash of the serialized tool definitions.
+ *
+ * Supports nested object and array schemas for OpenAI strict mode.
  */
 
 import { createHash } from 'crypto';
-import type { Tool } from '@/lib/generated/repkit/ai/v1/api_pb';
+import type { Tool, ToolSchema_Property } from '@/lib/generated/repkit/ai/v1/api_pb';
 
 /**
  * Cache for tool validation results
@@ -19,10 +21,11 @@ const validationCache = new Map<string, string[]>();
 /**
  * Generate a hash of tool definitions for cache key
  * Ensures identical tool sets map to the same cache entry
+ * Includes strict mode flag since validation differs between modes
  */
 function getToolsHash(tools: Tool[]): string {
   const toolStrings = tools
-    .map(t => `${t.name}|${t.description}|${JSON.stringify(t.parameters)}`)
+    .map(t => `${t.name}|${t.description}|${t.strict ?? false}|${JSON.stringify(t.parameters)}`)
     .sort();
 
   return createHash('sha256')
@@ -38,8 +41,124 @@ function getToolsHash(tools: Tool[]): string {
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
+ * Valid JSON Schema types
+ */
+const VALID_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+
+/**
+ * Maximum nesting depth for tool schemas
+ * Prevents stack overflow from malformed or malicious schemas
+ */
+const MAX_SCHEMA_DEPTH = 10;
+
+/**
+ * Validate a property and its nested structure recursively
+ *
+ * @param prop - Property to validate
+ * @param path - Path to the property for error messages (e.g., "parameters.workouts.items")
+ * @param toolName - Tool name for error context
+ * @param depth - Current recursion depth for safety limits
+ * @param strictMode - Whether strict mode validation is enabled
+ * @returns Array of error messages
+ */
+function validateProperty(
+  prop: ToolSchema_Property,
+  path: string,
+  toolName: string,
+  depth: number = 0,
+  strictMode: boolean = false
+): string[] {
+  const errors: string[] = [];
+
+  // Check depth limit
+  if (depth > MAX_SCHEMA_DEPTH) {
+    errors.push(
+      `Tool "${toolName}": schema at "${path}" exceeds maximum nesting depth of ${MAX_SCHEMA_DEPTH}`
+    );
+    return errors;
+  }
+
+  // Validate type
+  if (!prop.type || !VALID_TYPES.includes(prop.type)) {
+    errors.push(
+      `Tool "${toolName}": property "${path}" has invalid type "${prop.type}". Valid types: ${VALID_TYPES.join(', ')}`
+    );
+  }
+
+  // Strict mode validation for objects
+  if (strictMode && prop.type === 'object') {
+    // In strict mode, all objects must have additionalProperties: false
+    if (prop.additionalProperties !== false) {
+      errors.push(
+        `Tool "${toolName}": strict mode requires additionalProperties: false at "${path}"`
+      );
+    }
+
+    // In strict mode, all properties must be in the required array
+    if (prop.properties && Object.keys(prop.properties).length > 0) {
+      const propNames = Object.keys(prop.properties);
+      const requiredFields = prop.required || [];
+      const missingRequired = propNames.filter(name => !requiredFields.includes(name));
+
+      if (missingRequired.length > 0) {
+        errors.push(
+          `Tool "${toolName}": strict mode requires all properties to be in required array at "${path}". ` +
+          `Missing: ${missingRequired.join(', ')}`
+        );
+      }
+    }
+  }
+
+  // Validate nested object properties
+  if (prop.properties && Object.keys(prop.properties).length > 0) {
+    // Enforce type: 'object' when properties are present
+    if (prop.type !== 'object') {
+      errors.push(
+        `Tool "${toolName}": property "${path}" has properties but type "${prop.type}". Expected "object".`
+      );
+    }
+
+    // Check required fields exist in nested properties
+    if (prop.required && prop.required.length > 0) {
+      for (const requiredField of prop.required) {
+        if (!prop.properties[requiredField]) {
+          errors.push(
+            `Tool "${toolName}": required field "${requiredField}" not found in "${path}.properties". ` +
+            `Available: ${Object.keys(prop.properties).join(', ')}`
+          );
+        }
+      }
+    }
+
+    // Recursively validate nested properties
+    for (const [nestedName, nestedProp] of Object.entries(prop.properties)) {
+      errors.push(...validateProperty(nestedProp, `${path}.${nestedName}`, toolName, depth + 1, strictMode));
+    }
+  } else if (prop.required && prop.required.length > 0) {
+    // Catch required fields with empty/missing properties
+    errors.push(
+      `Tool "${toolName}": property "${path}" declares required fields but no properties are defined`
+    );
+  }
+
+  // Validate array items
+  if (prop.items) {
+    // Enforce type: 'array' when items is present
+    if (prop.type !== 'array') {
+      errors.push(
+        `Tool "${toolName}": property "${path}" has items but type "${prop.type}". Expected "array".`
+      );
+    }
+    errors.push(...validateProperty(prop.items, `${path}.items`, toolName, depth + 1, strictMode));
+  }
+
+  return errors;
+}
+
+/**
  * Validate a single tool schema
  * Ensures required properties exist in properties map
+ * Recursively validates nested object and array schemas
  *
  * @param tool - Tool definition to validate
  * @returns Array of error messages (empty if valid)
@@ -74,7 +193,7 @@ export function validateToolSchema(tool: Tool): string[] {
     return errors;
   }
 
-  // Validate required array
+  // Validate required array at top level
   if (schema.required && schema.required.length > 0) {
     // Check each required field exists in properties
     for (const requiredField of schema.required) {
@@ -86,14 +205,32 @@ export function validateToolSchema(tool: Tool): string[] {
     }
   }
 
-  // Validate each property has valid type
-  const validTypes = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
-  for (const [propName, prop] of Object.entries(schema.properties)) {
-    if (!prop.type || !validTypes.includes(prop.type)) {
+  // Validate strict mode requirements at top level
+  const strictMode = tool.strict === true;
+  if (strictMode) {
+    // Top-level must have additionalProperties: false
+    if (schema.additionalProperties !== false) {
       errors.push(
-        `Tool "${tool.name}": property "${propName}" has invalid type "${prop.type}". Valid types: ${validTypes.join(', ')}`
+        `Tool "${tool.name}": strict mode requires additionalProperties: false at top level`
       );
     }
+
+    // All top-level properties must be in required array
+    const propNames = Object.keys(schema.properties);
+    const requiredFields = schema.required || [];
+    const missingRequired = propNames.filter(name => !requiredFields.includes(name));
+
+    if (missingRequired.length > 0) {
+      errors.push(
+        `Tool "${tool.name}": strict mode requires all properties to be in required array. ` +
+        `Missing: ${missingRequired.join(', ')}`
+      );
+    }
+  }
+
+  // Validate each property recursively (handles nested objects and arrays)
+  for (const [propName, prop] of Object.entries(schema.properties)) {
+    errors.push(...validateProperty(prop, propName, tool.name, 0, strictMode));
   }
 
   return errors;

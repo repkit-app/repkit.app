@@ -58,19 +58,32 @@ message ToolParameter {
 /**
  * Tool parameter schema (JSON Schema object type)
  * Defines the parameters object for a tool function
+ * Supports nested object and array schemas for OpenAI strict mode
  */
 message ToolSchema {
   /**
    * Property definition for each parameter
+   * Supports full JSON Schema nesting for complex tool arguments
    */
   message Property {
     string type = 1;                  // JSON Schema type
     optional string description = 2;
     repeated string enum = 3;
+
+    // Nested object support (for type: "object")
+    map<string, Property> properties = 4;
+    repeated string required = 5;
+
+    // Array support (for type: "array")
+    optional Property items = 6;
+
+    // Strict mode support
+    optional bool additional_properties = 7;
   }
 
   map<string, Property> properties = 1;   // Required: keys must be in this map
   repeated string required = 2;           // Which properties are required
+  optional bool additional_properties = 3; // For strict mode (usually false)
 }
 
 /**
