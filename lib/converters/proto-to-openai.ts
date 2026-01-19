@@ -128,6 +128,8 @@ export function protoToOpenAITool(tool: InstanceType<typeof Tool>): OpenAITool {
         type: 'object' as const,
         properties: {},
         required: [] as string[],
+        // Strict mode requires additionalProperties: false on all objects
+        ...(tool.strict && { additionalProperties: false }),
       };
 
   return {

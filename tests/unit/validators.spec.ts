@@ -291,6 +291,43 @@ describe('Tool Schema Validation', () => {
       // Should have at least 2 errors (from tools at index 2 and 3)
       expect(errors.length).toBeGreaterThanOrEqual(1);
     });
+
+    it('should differentiate cache by strict mode flag', () => {
+      // Same tool definition but one with strict: true, one with strict: false
+      // Should not return cached result from non-strict when strict is true
+      const nonStrictTool = new Tool({
+        name: 'test_tool',
+        description: 'Test tool',
+        parameters: new ToolSchema({
+          properties: {
+            data: new ToolSchema_Property({ type: 'string' }),
+          },
+          // Missing additionalProperties: false - valid for non-strict
+        }),
+        strict: false,
+      });
+
+      const strictTool = new Tool({
+        name: 'test_tool',
+        description: 'Test tool',
+        parameters: new ToolSchema({
+          properties: {
+            data: new ToolSchema_Property({ type: 'string' }),
+          },
+          // Missing additionalProperties: false - invalid for strict
+        }),
+        strict: true,
+      });
+
+      // Non-strict should pass
+      const nonStrictErrors = validateTools([nonStrictTool]);
+      expect(nonStrictErrors).toHaveLength(0);
+
+      // Strict should fail with additionalProperties error (not return cached result)
+      const strictErrors = validateTools([strictTool]);
+      expect(strictErrors.length).toBeGreaterThan(0);
+      expect(strictErrors.some((e) => e.includes('additionalProperties'))).toBe(true);
+    });
   });
 
   describe('isTool Type Guard', () => {

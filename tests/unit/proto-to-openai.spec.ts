@@ -256,6 +256,35 @@ describe('Proto to OpenAI Conversion', () => {
       expect(result.function.parameters.required).toEqual([]);
     });
 
+    it('should set additionalProperties false for strict mode tool without parameters', () => {
+      const tool = new Tool({
+        name: 'get_time',
+        description: 'Get current time',
+        strict: true,
+      });
+
+      const result = protoToOpenAITool(tool);
+
+      expect(result.function.name).toBe('get_time');
+      expect(result.function.strict).toBe(true);
+      expect(result.function.parameters.type).toBe('object');
+      expect(result.function.parameters.properties).toEqual({});
+      expect(result.function.parameters.required).toEqual([]);
+      expect(result.function.parameters.additionalProperties).toBe(false);
+    });
+
+    it('should not set additionalProperties for non-strict tool without parameters', () => {
+      const tool = new Tool({
+        name: 'get_time',
+        description: 'Get current time',
+        strict: false,
+      });
+
+      const result = protoToOpenAITool(tool);
+
+      expect(result.function.parameters.additionalProperties).toBeUndefined();
+    });
+
     it('should convert real-world program_create_program schema', () => {
       // This is the actual schema that was failing
       const tool = new Tool({

@@ -21,10 +21,11 @@ const validationCache = new Map<string, string[]>();
 /**
  * Generate a hash of tool definitions for cache key
  * Ensures identical tool sets map to the same cache entry
+ * Includes strict mode flag since validation differs between modes
  */
 function getToolsHash(tools: Tool[]): string {
   const toolStrings = tools
-    .map(t => `${t.name}|${t.description}|${JSON.stringify(t.parameters)}`)
+    .map(t => `${t.name}|${t.description}|${t.strict ?? false}|${JSON.stringify(t.parameters)}`)
     .sort();
 
   return createHash('sha256')
