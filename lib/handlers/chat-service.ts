@@ -22,7 +22,6 @@ import {
   DeltaChoice,
   ChatMessage_Role,
   ToolCall,
-  Tool,
   Usage,
   PromptTokenDetails,
 } from '@/lib/generated/repkit/ai/v1/api_pb';
